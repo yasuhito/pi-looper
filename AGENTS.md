@@ -55,6 +55,7 @@ Pi extension / package の仕様に関わる変更では、Pi 本体のドキュ
 
 ```bash
 npm test
+npm run lint
 bash -n extensions/pi-looper/automations/*.sh
 python3 -m py_compile extensions/pi-looper/automations/*.py
 npm pack --dry-run

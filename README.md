@@ -123,7 +123,7 @@ PI_LOOPER_CONFIG=/path/to/projects.json pi
 - `githubRepo` — `owner/name`
 - `baseBranch` — worktree の基準 branch
 - `worktreeRoot` — Herdr worktree の root
-- `checkCommand` — worker / reviewer が最後に通す検証コマンド。pi-looper 自体では `npm test && bash -n extensions/pi-looper/automations/*.sh && python3 -m py_compile extensions/pi-looper/automations/*.py && npm pack --dry-run` を標準検証にしています
+- `checkCommand` — worker / reviewer が最後に通す検証コマンド。pi-looper 自体では `npm test && npm run lint && bash -n extensions/pi-looper/automations/*.sh && python3 -m py_compile extensions/pi-looper/automations/*.py && npm pack --dry-run` を標準検証にしています
 - `autoMerge` — `true` のときだけ PR reviewer が条件を満たした PR を merge する。既定値は `false` なので、初回導入では明示的に `false` のままにしてください
 - `workerInstructions` — worker prompt に差し込むプロジェクト固有指示
 - `labels` — issue / PR のラベル
