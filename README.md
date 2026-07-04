@@ -1,8 +1,12 @@
 # pi-looper
 
-pi-looper は、[Pi](https://pi.dev/) 上で GitHub Issue / PR の作業ループを回す Pi extension です。
+pi-looper は、[Pi](https://pi.dev/) 上で GitHub Issue から実装、PR 作成、レビュー、修正、検証、マージまでを自動で回すための loop engineering tool です。
 
-現在の標準 runner は [Herdr](https://herdr.dev/) です。Issue coordinator が実装可能な issue を拾って Herdr worktree の Pi worker に渡し、PR reviewer が別 Pi セッションの review worker を起動してレビュー、必要な修正、検証、最終マージまで進めます。
+人間が agent-ready な issue を用意すると、pi-looper が定期的に GitHub を見に行きます。実装可能な issue があれば、Issue coordinator が Herdr worktree に Pi worker を起動し、worker が実装します。実装後は coordinator が検証して PR を作り、PR reviewer が別 Pi セッションの review worker を起動してレビュー、必要な修正、再検証、最終マージまで進めます。
+
+つまり、開発者は「何を作るか」を GitHub Issue に書き、ラベルで agent に渡せる状態を示すだけで、実装からマージまでのループを継続的に回せます。pi-looper は、この「issue を作るだけで開発ループが進む」運用を Pi 上で実現するための拡張です。
+
+現在の標準 runner は [Herdr](https://herdr.dev/) です。将来は tmux など別 runner も追加できるよう、Herdr 専用ではなく `pi-looper` という名前にしています。
 
 ## 状態
 

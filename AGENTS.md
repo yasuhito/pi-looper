@@ -51,9 +51,10 @@ Pi extension / package の仕様に関わる変更では、Pi 本体のドキュ
 
 ## 検証
 
-現時点では `package.json` に標準の test / lint script はない。変更内容に応じて、少なくとも次を実行する。
+変更内容に応じて、少なくとも次を実行する。
 
 ```bash
+npm test
 bash -n extensions/pi-looper/automations/*.sh
 python3 -m py_compile extensions/pi-looper/automations/*.py
 npm pack --dry-run
