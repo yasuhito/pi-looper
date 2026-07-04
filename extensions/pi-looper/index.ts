@@ -12,6 +12,7 @@ const {
   nextSlotAfter,
   normalizeProject,
   renderTemplate,
+  resolveConfigPath,
   sanitizeId,
   templateValues,
 } = require("../../src/core.ts");
@@ -37,7 +38,13 @@ function resolveExtensionDir() {
 }
 
 const EXTENSION_DIR = resolveExtensionDir();
-const CONFIG_PATH = process.env.PI_LOOPER_CONFIG || process.env.HERDR_LOOPER_CONFIG || path.join(EXTENSION_DIR, "projects.json");
+const CONFIG_PATH = resolveConfigPath({
+  env: process.env,
+  stateDir: STATE_DIR,
+  extensionDir: EXTENSION_DIR,
+  exists: fs.existsSync,
+  joinPath: path.join,
+});
 const AUTOMATION_DIR = path.join(EXTENSION_DIR, "automations");
 
 function readJsonFile(file, fallback) {

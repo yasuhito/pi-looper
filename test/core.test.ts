@@ -7,11 +7,56 @@ import {
   normalizeProject,
   parseEveryMinutes,
   renderTemplate,
+  resolveConfigPath,
   sanitizeId,
   templateValues,
 } from "../src/core";
 
 describe("deterministic extension core", () => {
+  it("uses PI_LOOPER_CONFIG before default config paths", () => {
+    expect(
+      resolveConfigPath({
+        env: { PI_LOOPER_CONFIG: "/explicit/projects.json" },
+        stateDir: "/state",
+        extensionDir: "/extension",
+        exists: () => true,
+      }),
+    ).toBe("/explicit/projects.json");
+  });
+
+  it("uses HERDR_LOOPER_CONFIG when the new config variable is unset", () => {
+    expect(
+      resolveConfigPath({
+        env: { HERDR_LOOPER_CONFIG: "/legacy/projects.json" },
+        stateDir: "/state",
+        extensionDir: "/extension",
+        exists: () => true,
+      }),
+    ).toBe("/legacy/projects.json");
+  });
+
+  it("uses the user state config before package-local config", () => {
+    expect(
+      resolveConfigPath({
+        env: {},
+        stateDir: "/state",
+        extensionDir: "/extension",
+        exists: (value) => value === "/state/projects.json",
+      }),
+    ).toBe("/state/projects.json");
+  });
+
+  it("falls back to package-local config when user state config is missing", () => {
+    expect(
+      resolveConfigPath({
+        env: {},
+        stateDir: "/state",
+        extensionDir: "/extension",
+        exists: () => false,
+      }),
+    ).toBe("/extension/projects.json");
+  });
+
   it("normalizes project configuration defaults from public config fields", () => {
     const project = normalizeProject({
       id: "Example Project!",

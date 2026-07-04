@@ -73,15 +73,17 @@ pi install /home/yasuhito/Work/pi-looper
 mkdir -p ~/.pi/agent/pi-looper
 $EDITOR ~/.pi/agent/pi-looper/projects.json
 cd /home/yasuhito/Work/pi-looper
-PI_LOOPER_CONFIG=~/.pi/agent/pi-looper/projects.json pi
+pi
 ```
 
 一時的に試すだけなら、install せずに次でもよいです。
 
 ```bash
 cd /home/yasuhito/Work/pi-looper
-PI_LOOPER_CONFIG=~/.pi/agent/pi-looper/projects.json pi -e /home/yasuhito/Work/pi-looper
+pi -e /home/yasuhito/Work/pi-looper
 ```
+
+別の設定ファイルを使う場合だけ `PI_LOOPER_CONFIG=/path/to/projects.json` を指定します。
 
 ## 必要なラベル
 

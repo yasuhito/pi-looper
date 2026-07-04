@@ -65,11 +65,18 @@ mkdir -p ~/.pi/agent/pi-looper
 cp extensions/pi-looper/projects.example.json ~/.pi/agent/pi-looper/projects.json
 ```
 
-起動時に設定ファイルを指定します。pi-looper は Pi の現在ディレクトリが `repoPath` またはその配下にある場合だけ動くため、対象 repository の中で起動してください。
+既定では `~/.pi/agent/pi-looper/projects.json` を読みます。pi-looper は Pi の現在ディレクトリが `repoPath` またはその配下にある場合だけ動くため、対象 repository の中で起動してください。
 
 ```bash
 cd /absolute/path/to/your/repo
-PI_LOOPER_CONFIG=~/.pi/agent/pi-looper/projects.json pi
+pi
+```
+
+別の設定ファイルを使いたい場合だけ、起動時に `PI_LOOPER_CONFIG` を指定します。
+
+```bash
+cd /absolute/path/to/your/repo
+PI_LOOPER_CONFIG=/path/to/projects.json pi
 ```
 
 主な設定項目:

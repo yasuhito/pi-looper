@@ -4,13 +4,14 @@ Pi 本体から読み込まれる extension 実体です。通常は package roo
 
 ## ローカル設定
 
-この directory に実運用用の `projects.json` を置くこともできますが、リポジトリには含めません。公開用の雛形は `projects.example.json` です。
+通常は `~/.pi/agent/pi-looper/projects.json` に実運用用の設定を置きます。この directory に `projects.json` を置くこともできますが、リポジトリには含めません。公開用の雛形は `projects.example.json` です。
 
 優先順位:
 
 1. `PI_LOOPER_CONFIG`
 2. `HERDR_LOOPER_CONFIG`（旧名互換）
-3. この directory の `projects.json`
+3. `~/.pi/agent/pi-looper/projects.json`
+4. この directory の `projects.json`
 
 ## 状態保存
 
