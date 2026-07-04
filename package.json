@@ -5,10 +5,30 @@
   "keywords": ["pi-package", "pi-extension", "agent", "github", "herdr"],
   "license": "MIT",
   "type": "commonjs",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "files": [
+    "AGENTS.md",
+    "LICENSE",
+    "README.md",
+    "docs/herdr-runner.md",
+    "extensions/pi-looper/index.ts",
+    "extensions/pi-looper/README.md",
+    "extensions/pi-looper/projects.example.json",
+    "extensions/pi-looper/automations/*.md",
+    "extensions/pi-looper/automations/*.py",
+    "extensions/pi-looper/automations/*.sh",
+    "src/**/*.ts"
+  ],
   "pi": {
     "extensions": ["./extensions/pi-looper/index.ts"]
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.4"
   }
 }
+
