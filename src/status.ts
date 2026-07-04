@@ -293,12 +293,23 @@ function formatItems(items: StatusLineItem[]): string {
   return items.map((item) => `#${item.number ?? "?"}${item.title ? ` ${item.title}` : ""}`).join(", ");
 }
 
+function formatWorktrees(worktrees: HerdrWorktree[]): string {
+  if (!worktrees.length) return "none";
+  return worktrees
+    .map((worktree) => {
+      const workspaceId = worktree.open_workspace_id || worktree.workspaceId || "no-workspace";
+      return `${worktree.branch || "unknown-branch"} -> ${worktree.path || "unknown-path"} (${workspaceId})`;
+    })
+    .join("; ");
+}
+
 function formatCleanupCandidates(candidates: CleanupCandidate[]): string {
   if (!candidates.length) return "none";
   return candidates
     .map((candidate) => {
       const pr = candidate.prNumber ? `#${candidate.prNumber} ` : "";
-      return `${pr}${candidate.branch || "unknown-branch"} -> ${candidate.path || "unknown-path"} (${candidate.reason})`;
+      const workspaceId = candidate.workspaceId || "no-workspace";
+      return `${pr}${candidate.branch || "unknown-branch"} -> ${candidate.path || "unknown-path"} (${workspaceId}; ${candidate.reason})`;
     })
     .join("; ");
 }
@@ -340,7 +351,7 @@ export function formatStatusReport(snapshot: StatusSnapshot): string {
     `- reviewing: ${formatItems(snapshot.prs.reviewing)}`,
     "",
     "Herdr:",
-    `- worker worktrees: ${snapshot.herdr.workerWorktrees.length}`,
+    `- worker worktrees: ${formatWorktrees(snapshot.herdr.workerWorktrees)}`,
     `- cleanup candidates: ${formatCleanupCandidates(snapshot.herdr.cleanupCandidates)}`,
     `- stale leftovers: ${snapshot.herdr.staleLeftovers.length ? snapshot.herdr.staleLeftovers.map((worktree) => worktree.path || worktree.branch || "unknown").join(", ") : "none"}`,
   );
