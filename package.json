@@ -12,6 +12,7 @@
     "AGENTS.md",
     "LICENSE",
     "README.md",
+    "docs/dogfooding.md",
     "docs/herdr-runner.md",
     "extensions/pi-looper/index.ts",
     "extensions/pi-looper/README.md",

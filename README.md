@@ -30,6 +30,12 @@ pi-looper は GitHub issue / PR にコメントを書き込み、ラベルを編
 
 Herdr runner の詳細は [docs/herdr-runner.md](docs/herdr-runner.md) を参照してください。
 
+## Dogfooding
+
+pi-looper 自体の開発も、段階的に pi-looper で回します。最初は issue coordinator だけを有効にし、agent-ready issue から PR 作成までを自動化します。PR レビューとマージは、安全設定が整うまで人間が確認します。
+
+詳しい手順は [docs/dogfooding.md](docs/dogfooding.md) を参照してください。
+
 ## インストール
 
 ローカルで試す場合:
