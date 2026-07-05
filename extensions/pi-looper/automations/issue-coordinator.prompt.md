@@ -222,11 +222,23 @@ helper の出力例:
 監視手順:
 
 1. 30秒ごとに helper を実行する。
-2. helper status が `complete` または `blocked` なら採用する。
+2. helper status が `complete` または `blocked` なら採用する。この時点で直ちにポーリングを打ち切り、次の手順へ進む。固定回数のループを完走しない。ループを書く場合は判定確定で `break` する形にする。
 3. helper status が `none` または `invalid` なら完了扱いしない。
 4. Herdr の agent status が `idle` / `done` / `blocked` でも、helper status が `none` または `invalid` なら完了扱いしない。Worker に、指定済み promise ファイルへ JSON を書くよう1回依頼する。
    - `{{workerAgent}}` が `claude` の場合、pane 送信の督促は本文と Enter を別々に送る: `herdr agent send <t> "<本文>"` のあと `herdr agent send <t> $'\r'`。
 5. `herdr wait agent-status --status done` は補助に留める。唯一の待機条件にしない。
+
+望ましいループの形（判定確定で `break` する）:
+
+```bash
+while true; do
+  status=$(python3 {{automationDir}}/extract-worker-promise.py --file "<promiseFile>" | jq -r '.status')
+  case "$status" in
+    complete|blocked) break ;;  # 判定確定。直ちに打ち切って次の手順へ
+  esac
+  sleep 30
+done
+```
 
 BLOCKED の場合:
 
