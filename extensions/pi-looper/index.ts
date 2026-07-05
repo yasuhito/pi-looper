@@ -503,6 +503,8 @@ async function collectLiveSnapshotData(
     worktrees,
     gitStatuses,
     gitHeads,
+    automationDir: AUTOMATION_DIR,
+    statePath: STATE_PATH,
     warnings,
   };
 }
@@ -516,6 +518,21 @@ async function buildLiveDoctorReport(pi, cwd) {
   const data = await collectLiveSnapshotData(pi, cwd, { includeIssueComments: true });
   return formatDoctorReport(buildDoctorSnapshot(data));
 }
+function isAutomationFailureResult(result) {
+  return result === "precheck_error" || result === "send_error" || /^precheck_skipped:\d+$/.test(result);
+}
+
+// Records lastResult and keeps failureStreak = number of consecutive identical failures,
+// so doctor can detect a spinning loop from a single state.json snapshot.
+function recordAutomationResult(entry, result) {
+  if (isAutomationFailureResult(result)) {
+    entry.failureStreak = (entry.lastResult === result ? entry.failureStreak || 0 : 0) + 1;
+  } else {
+    entry.failureStreak = 0;
+  }
+  entry.lastResult = result;
+}
+
 async function runAutomation(pi, ctx, project, automation, dueSlot, state) {
   const now = Date.now();
   const key = automationStateKey(project, automation);
@@ -536,7 +553,7 @@ async function runAutomation(pi, ctx, project, automation, dueSlot, state) {
   try {
     result = await runPrecheck(pi, project, automation);
   } catch (error) {
-    entry.lastResult = "precheck_error";
+    recordAutomationResult(entry, "precheck_error");
     entry.lastError = error?.message || String(error);
     entry.updatedAt = Date.now();
     saveState(state);
@@ -547,7 +564,7 @@ async function runAutomation(pi, ctx, project, automation, dueSlot, state) {
   }
 
   if (result.code !== 0) {
-    entry.lastResult = `precheck_skipped:${result.code}`;
+    recordAutomationResult(entry, `precheck_skipped:${result.code}`);
     entry.lastSkippedAt = Date.now();
     entry.updatedAt = Date.now();
     saveState(state);
@@ -555,7 +572,7 @@ async function runAutomation(pi, ctx, project, automation, dueSlot, state) {
   }
 
   if (typeof ctx.isIdle === "function" && !ctx.isIdle()) {
-    entry.lastResult = "deferred_busy_after_precheck";
+    recordAutomationResult(entry, "deferred_busy_after_precheck");
     entry.updatedAt = Date.now();
     saveState(state);
     return;
@@ -564,7 +581,7 @@ async function runAutomation(pi, ctx, project, automation, dueSlot, state) {
   try {
     const prompt = readPrompt(project, automation);
     pi.sendUserMessage(prompt);
-    entry.lastResult = "queued";
+    recordAutomationResult(entry, "queued");
     entry.lastQueuedAt = Date.now();
     entry.updatedAt = Date.now();
     saveState(state);
@@ -572,7 +589,7 @@ async function runAutomation(pi, ctx, project, automation, dueSlot, state) {
       ctx.ui.notify(`${EXTENSION_NAME} queued: ${automation.name}`, "info");
     } catch {}
   } catch (error) {
-    entry.lastResult = "send_error";
+    recordAutomationResult(entry, "send_error");
     entry.lastError = error?.message || String(error);
     entry.updatedAt = Date.now();
     saveState(state);

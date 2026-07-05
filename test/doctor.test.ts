@@ -8,7 +8,17 @@ const project = normalizeProject({
   repoPath: "/repo",
   githubRepo: "owner/repo",
   worktreeRoot: "/wt",
+  automations: [
+    { id: "auto", name: "issue-coordinator", schedule: "*/10 * * * *", precheckFile: "issue-coordinator.precheck.sh" },
+  ],
 });
+
+const NOW = Date.parse("2026-07-05T00:00:00Z");
+const SLOT_MS = 10 * 60_000;
+
+function withAutomationState(entry: Record<string, unknown>) {
+  return { state: { automations: { "pi-looper:auto": entry } } };
+}
 
 function snapshot(overrides: Partial<Parameters<typeof buildDoctorSnapshot>[0]> = {}) {
   return buildDoctorSnapshot({
@@ -18,7 +28,9 @@ function snapshot(overrides: Partial<Parameters<typeof buildDoctorSnapshot>[0]> 
     openPrs: [],
     worktrees: [],
     gitStatuses: {},
-    nowMs: Date.parse("2026-07-05T00:00:00Z"),
+    automationDir: "/ext/automations",
+    statePath: "/state/state.json",
+    nowMs: NOW,
     ...overrides,
   });
 }
@@ -115,6 +127,38 @@ describe("pi-looper doctor", () => {
     expect(result.findings[0]?.commands).toContain(
       "gh issue edit 7 --remove-label needs-triage --add-label ready-for-agent --add-label agent:implement",
     );
+  });
+
+  it("reports the precheck file check command for precheck_skipped:127", () => {
+    const result = snapshot(
+      withAutomationState({ lastResult: "precheck_skipped:127", lastAttemptAt: NOW, failureStreak: 1 }),
+    );
+
+    expect(result.findings[0]?.commands).toContain("ls /ext/automations/issue-coordinator.precheck.sh");
+  });
+
+  it("reports a spinning-loop finding for repeated identical failures", () => {
+    const result = snapshot(
+      withAutomationState({ lastResult: "precheck_skipped:1", lastAttemptAt: NOW, failureStreak: 3 }),
+    );
+
+    expect(result.findings[0]?.type).toBe("automation_spinning");
+  });
+
+  it("reports a stalled-coordinator finding when attempts stop for 3 slots", () => {
+    const result = snapshot(
+      withAutomationState({ lastResult: "queued", lastAttemptAt: NOW - 3 * SLOT_MS - 1, failureStreak: 0 }),
+    );
+
+    expect(result.findings[0]?.type).toBe("coordinator_stalled");
+  });
+
+  it("does not report a healthy automation that just ran", () => {
+    const result = snapshot(
+      withAutomationState({ lastResult: "queued", lastAttemptAt: NOW, failureStreak: 0 }),
+    );
+
+    expect(result.findings).toEqual([]);
   });
 
   it("prints no-problem message when there are no findings", () => {
