@@ -379,6 +379,24 @@ async function gitText(pi, args) {
   }
 }
 
+function readClaudeConfigResult() {
+  const configPath = path.join(os.homedir(), ".claude.json");
+  let raw;
+  try {
+    raw = fs.readFileSync(configPath, "utf8");
+  } catch {
+    return { ok: false };
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    const projects =
+      parsed && typeof parsed.projects === "object" && parsed.projects ? parsed.projects : {};
+    return { ok: true, projects };
+  } catch {
+    return { ok: false };
+  }
+}
+
 async function collectLiveSnapshotData(
   pi,
   cwd,
@@ -481,6 +499,8 @@ async function collectLiveSnapshotData(
         result: { worktrees: [] },
       })
     : { result: { worktrees: [] } };
+  const claudeConfig =
+    project.workerAgent === "claude" ? readClaudeConfigResult() : undefined;
   const worktrees = worktreesFromHerdrResult(herdrData);
   const gitStatuses = {};
   const gitHeads = {};
@@ -503,6 +523,7 @@ async function collectLiveSnapshotData(
     worktrees,
     gitStatuses,
     gitHeads,
+    claudeConfig,
     warnings,
   };
 }
