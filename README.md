@@ -192,6 +192,26 @@ gh label create needs-triage --repo owner/repo --color f9d0c4 || true
 - `ready-for-agent`
 - `agent:implement`
 
+## エージェントに渡せる Issue の書き方
+
+`generic-issue-coordinator` は、Issue を作業エージェントに渡す前に実装契約を確認します。この条件は [extensions/pi-looper/automations/generic-issue-coordinator.prompt.md](extensions/pi-looper/automations/generic-issue-coordinator.prompt.md) の `### 3. Gate` 節を正とし、README の説明もその節に合わせます。
+
+Issue 本文には、少なくとも次の見出しを入れてください。
+
+- `## Agent Brief` または `## What to build` — 何を作るか、変更範囲、期待する挙動を書く。
+- `## Acceptance criteria` または `## 受け入れ条件` — 完了時に満たす条件と、必要な検証コマンドを書く。
+
+必要に応じて `## Out of scope` / `## 対象外` も書き、今回やらないことを明確にしてください。
+
+Gate では、見出し以外にも次を確認します。
+
+- 子 Issue や task list を実装単位として要求していない。
+- PRD 型 Issue、設計検討、RFC、計画作成だけの Issue ではない。
+- 既存の open PR が `Closes #N` / `Fixes #N` / `Resolves #N` で対象 Issue を閉じる形になっていない。
+- GitHub Relationships metadata と本文・コメント上の依存 Issue がすべて closed である。
+
+契約不足の場合、coordinator は `agent:implement` を外し、`needs-triage` を付け、不足点を Issue にコメントします。Issue 本文を直したら、`agent:implement` を付け直すと次回以降の実行で復帰できます。子 Issue を持つ親 Issue、PRD 型 Issue、既存 PR がある Issue は `agent:blocked` に送られるため、実装可能な単位の Issue を別に用意してください。依存 Issue が open の場合はラベル変更やコメントをせず、その実行では見送ります。
+
 主な制御ラベル:
 
 - `agent:in-progress` — 実装中
