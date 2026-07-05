@@ -211,7 +211,7 @@ function activeProject(cwd, projects) {
 }
 
 function automationEnv(project, automation) {
-  const env = {
+  const env: Record<string, string | undefined> = {
     ...process.env,
     PI_LOOPER_PROJECT_ID: project.id,
     PI_LOOPER_REPO_PATH: project.repoPath,
@@ -278,7 +278,7 @@ function readPrompt(project, automation) {
   return renderTemplate(template, templateValues(project, automation, AUTOMATION_DIR));
 }
 
-async function execJson(pi, command, args, fallback, options = {}) {
+async function execJson(pi, command, args, fallback, options: { timeout?: number } = {}) {
   try {
     const result = await pi.exec(command, args, { timeout: options.timeout || 15_000 });
     if (result.code !== 0) return fallback;

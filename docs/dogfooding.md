@@ -54,7 +54,7 @@ See [public-package-setup.md](public-package-setup.md) for the first-time setup 
       "githubRepo": "yasuhito/pi-looper",
       "baseBranch": "origin/main",
       "worktreeRoot": "/home/yasuhito/Work/herdr-worktrees/pi-looper/",
-      "checkCommand": "npm test && npm run lint && bash -n extensions/pi-looper/automations/*.sh && python3 -m py_compile extensions/pi-looper/automations/*.py && npm pack --dry-run",
+      "checkCommand": "npm test && npm run lint && npm run typecheck && bash -n extensions/pi-looper/automations/*.sh && python3 -m py_compile extensions/pi-looper/automations/*.py && npm pack --dry-run",
       "autoMerge": false,
       "workerInstructions": "AGENTS.md, README.md, docs/dogfooding.md, and relevant files must be read before making changes. Follow the one-expectation-per-test rule.",
       "automations": [
@@ -157,6 +157,7 @@ pi-looper の試験運用を安全に進めるため、PR reviewer の自動マ�
 - 既定設定では自動マージが有効にならない。
 - `npm test` が通る。
 - `npm run lint` が通る。
+- `npm run typecheck` が通る。
 - `bash -n extensions/pi-looper/automations/*.sh` が通る。
 - `python3 -m py_compile extensions/pi-looper/automations/*.py` が通る。
 - `npm pack --dry-run` にローカル設定やキャッシュが含まれない。
@@ -173,6 +174,7 @@ pi-looper 自体の変更やパッケージ内容を確認するときは、次�
 ```bash
 npm test
 npm run lint
+npm run typecheck
 bash -n extensions/pi-looper/automations/*.sh
 python3 -m py_compile extensions/pi-looper/automations/*.py
 npm pack --dry-run
