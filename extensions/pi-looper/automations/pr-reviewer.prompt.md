@@ -328,6 +328,19 @@ helper status ごとの扱い:
 
 - `complete`: 完了として採用する。
 - `blocked`: `{{reviewingLabel}}` を外し、`{{blockedLabel}}` を付け、PR にブロッカー、確認済み事項、次に必要な判断を Blocked 報告フォーマットで日本語コメントして終了する。マージしない。
+
+helper status が `complete` または `blocked` になったら、直ちにポーリングを打ち切って次の手順へ進む。固定回数のループを完走しない。ループを書く場合は上限を持ちつつ判定確定で `break` する形にする。
+
+```bash
+for _ in $(seq 40); do
+  status=$(python3 {{automationDir}}/extract-worker-promise.py --file "<promiseFile>" | jq -r '.status')
+  case "$status" in
+    complete|blocked) break ;;  # 判定確定。直ちに打ち切って次の手順へ
+  esac
+  sleep 30
+done
+# 決着したら上限を待たず即 break する。決着しないまま上限に達したら監視 timeout として次の手順へ進む。
+```
 - `none`: Herdr の agent status がまだ working なら待つ。agent status が `idle` / `done` / `blocked` なのに promise ファイルが無い場合は、レビューエージェントに指定済み promise ファイルへ JSON を書くよう1回だけ依頼する。次の確認でも `none` なら `{{reviewingLabel}}` を外し、`{{blockedLabel}}` を付け、PR に「レビューエージェントが完了報告を書かなかった」と Blocked 報告フォーマットでコメントして終了する。
 - `invalid`: レビューエージェントに指定済み promise ファイルへ正しい JSON を書くよう1回だけ依頼する。次の確認でも `invalid` なら `{{reviewingLabel}}` を外し、`{{blockedLabel}}` を付け、PR に「レビューエージェントの完了報告 JSON が不正だった」と Blocked 報告フォーマットでコメントして終了する。
 - 起動失敗または監視 timeout: `{{reviewingLabel}}` を外し、`{{blockedLabel}}` を付け、PR に起動失敗または timeout の内容を Blocked 報告フォーマットでコメントして終了する。
