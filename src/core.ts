@@ -86,7 +86,9 @@ export type NormalizedProject = {
 
 export type AutomationStateEntry = {
   lastScheduledAt?: number;
+  lastAttemptAt?: number;
   lastResult?: string;
+  failureStreak?: number;
   updatedAt?: number;
 };
 

@@ -1,10 +1,23 @@
 import path from "node:path";
 
-import type { NormalizedProject } from "./core";
+import { type NormalizedAutomation, type NormalizedProject, automationStateKey, parseEveryMinutes } from "./core";
 import { type GithubItem, type HerdrWorktree, labelsOf, resolveActiveProject } from "./status";
 
 const STALE_IN_PROGRESS_MS = 24 * 60 * 60 * 1000;
 const MAX_COMMENT_SUMMARY_LENGTH = 180;
+const STALLED_SLOT_THRESHOLD = 3;
+const SPINNING_STREAK_THRESHOLD = 3;
+const UNAVAILABLE_PRECHECK_CODES = new Set([126, 127]);
+
+type DoctorAutomationEntry = {
+  lastResult?: string | null;
+  lastAttemptAt?: number | null;
+  failureStreak?: number | null;
+};
+
+type DoctorState = {
+  automations?: Record<string, DoctorAutomationEntry> | null;
+};
 
 type GithubComment = {
   body?: string | null;
@@ -31,6 +44,9 @@ export type DoctorInput = {
   openPrs?: DoctorGithubItem[];
   worktrees?: HerdrWorktree[];
   gitStatuses?: Record<string, string>;
+  state?: DoctorState | null;
+  automationDir?: string;
+  statePath?: string;
   claudeConfig?: ClaudeConfigResult;
   nowMs?: number;
 };
@@ -40,6 +56,9 @@ export type DoctorFindingType =
   | "stale_in_progress"
   | "orphan_worktree"
   | "queue_jam"
+  | "automation_unavailable"
+  | "automation_spinning"
+  | "coordinator_stalled"
   | "workspace_trust";
 
 export type DoctorFinding = {
@@ -265,6 +284,86 @@ function buildQueueJamFindings(project: NormalizedProject, issues: DoctorGithubI
   return findings;
 }
 
+function automationRef(project: NormalizedProject, automation: NormalizedAutomation): string {
+  const name = automation.name || automation.id;
+  return `${project.id} ${name.replace(new RegExp(`^${project.id}[:\\s]+`), "")}`.trim();
+}
+
+function precheckSkippedCode(result: string): number | null {
+  const match = /^precheck_skipped:(\d+)$/.exec(result);
+  if (!match) return null;
+  const code = Number(match[1]);
+  return Number.isFinite(code) ? code : null;
+}
+
+function isFailureResult(result: string): boolean {
+  return result === "precheck_error" || result === "send_error" || result === "precheck_file_missing";
+}
+
+function precheckCheckCommand(automationDir: string, automation: NormalizedAutomation): string {
+  const target = automation.precheckFile
+    ? path.posix.join(automationDir, automation.precheckFile)
+    : automationDir;
+  return `ls ${shellArg(target)}`;
+}
+
+function buildAutomationFindings(
+  project: NormalizedProject,
+  state: DoctorState,
+  automationDir: string,
+  statePath: string,
+  nowMs: number,
+): DoctorFinding[] {
+  const entries = state.automations || {};
+  const findings: DoctorFinding[] = [];
+  for (const automation of project.automations) {
+    const entry = entries[automationStateKey(project, automation)];
+    if (!entry) continue;
+
+    const result = String(entry.lastResult || "");
+    const ref = automationRef(project, automation);
+    const intervalMinutes = parseEveryMinutes(automation.schedule);
+    const slotMs = intervalMinutes ? intervalMinutes * 60_000 : null;
+
+    const lastAttemptAt = Number(entry.lastAttemptAt);
+    if (slotMs && Number.isFinite(lastAttemptAt) && nowMs - lastAttemptAt >= STALLED_SLOT_THRESHOLD * slotMs) {
+      findings.push({
+        id: `automation-stalled-${automation.id}`,
+        type: "coordinator_stalled",
+        title: `automation not attempted: ${ref}`,
+        summary: `${STALLED_SLOT_THRESHOLD} スロット以上、試行が途絶えています。司令塔セッションが停止している疑いがあります。lastAttemptAt=${new Date(lastAttemptAt).toISOString()}`,
+        commands: [`cat ${shellArg(statePath)}`],
+      });
+      continue;
+    }
+
+    const code = precheckSkippedCode(result);
+    if ((code !== null && UNAVAILABLE_PRECHECK_CODES.has(code)) || result === "precheck_file_missing") {
+      const reason = code !== null ? `code ${code} でスキップされ` : "設定された precheck ファイルが見つからず";
+      findings.push({
+        id: `automation-unavailable-${automation.id}`,
+        type: "automation_unavailable",
+        title: `precheck unavailable: ${ref}`,
+        summary: `precheck が ${reason}、自動化が起動していません。precheck スクリプトの不在または実行不能が疑われます。`,
+        commands: [precheckCheckCommand(automationDir, automation)],
+      });
+      continue;
+    }
+
+    const failureStreak = Number(entry.failureStreak) || 0;
+    if (isFailureResult(result) && failureStreak >= SPINNING_STREAK_THRESHOLD) {
+      findings.push({
+        id: `automation-spinning-${automation.id}`,
+        type: "automation_spinning",
+        title: `automation spinning: ${ref}`,
+        summary: `同じ失敗 ${result} が ${failureStreak} 回連続しています。ループが空回りしています。`,
+        commands: [precheckCheckCommand(automationDir, automation)],
+      });
+    }
+  }
+  return findings;
+}
+
 function buildWorkspaceTrustFindings(
   project: NormalizedProject,
   claudeConfig: ClaudeConfigResult | undefined,
@@ -311,6 +410,9 @@ export function buildDoctorSnapshot(input: DoctorInput): DoctorSnapshot {
   const openPrs = input.openPrs || [];
   const worktrees = input.worktrees || [];
   const gitStatuses = input.gitStatuses || {};
+  const state = input.state || {};
+  const automationDir = input.automationDir || ".";
+  const statePath = input.statePath || "state.json";
   const nowMs = input.nowMs ?? Date.now();
 
   return {
@@ -321,6 +423,7 @@ export function buildDoctorSnapshot(input: DoctorInput): DoctorSnapshot {
       ...buildStaleInProgressFindings(project, issues, worktrees, nowMs),
       ...buildOrphanWorktreeFindings(project, issues, openPrs, worktrees, gitStatuses),
       ...buildQueueJamFindings(project, issues),
+      ...buildAutomationFindings(project, state, automationDir, statePath, nowMs),
       ...buildWorkspaceTrustFindings(project, input.claudeConfig),
     ],
   };
