@@ -2,10 +2,10 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const issueCoordinatorPrompt = readFileSync(
-  "extensions/pi-looper/automations/generic-issue-coordinator.prompt.md",
+  "extensions/pi-looper/automations/issue-coordinator.prompt.md",
   "utf8",
 );
-const prReviewerPrompt = readFileSync("extensions/pi-looper/automations/generic-pr-reviewer.prompt.md", "utf8");
+const prReviewerPrompt = readFileSync("extensions/pi-looper/automations/pr-reviewer.prompt.md", "utf8");
 
 describe("blocked report format prompts", () => {
   it("requires the issue coordinator blocked report recovery section", () => {

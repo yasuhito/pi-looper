@@ -9,11 +9,11 @@ function runExternalReviewGate(fixtureName: string, now = "2026-07-04T00:30:00Z"
   const result = spawnSync(
     "python3",
     [
-      "extensions/pi-looper/automations/generic-pr-reviewer-decisions.py",
+      "extensions/pi-looper/automations/pr-reviewer-decisions.py",
       "--mode",
       "external-review-gate",
       "--input",
-      path.join(process.cwd(), "test/fixtures/generic-pr-reviewer", fixtureName),
+      path.join(process.cwd(), "test/fixtures/pr-reviewer", fixtureName),
       "--external-review-wait-seconds",
       "1800",
       "--now",
@@ -45,7 +45,7 @@ function runPrecheck(fixtureName: string, options: { autoMerge?: boolean; now?: 
     );
     chmodSync(fakeGhPath, 0o755);
 
-    const result = spawnSync("bash", ["extensions/pi-looper/automations/generic-pr-reviewer.precheck.sh"], {
+    const result = spawnSync("bash", ["extensions/pi-looper/automations/pr-reviewer.precheck.sh"], {
       cwd: process.cwd(),
       env: {
         ...process.env,
@@ -59,7 +59,7 @@ function runPrecheck(fixtureName: string, options: { autoMerge?: boolean; now?: 
         PI_LOOPER_BLOCKED_LABEL: "agent:blocked",
         PI_LOOPER_EXTERNAL_REVIEW_WAIT_SECONDS: "1800",
         PI_LOOPER_NOW: options.now || "2026-07-04T00:30:00Z",
-        PI_LOOPER_TEST_FIXTURE: path.join(process.cwd(), "test/fixtures/generic-pr-reviewer", fixtureName),
+        PI_LOOPER_TEST_FIXTURE: path.join(process.cwd(), "test/fixtures/pr-reviewer", fixtureName),
       },
       encoding: "utf8",
     });
@@ -70,7 +70,7 @@ function runPrecheck(fixtureName: string, options: { autoMerge?: boolean; now?: 
   }
 }
 
-describe("generic PR reviewer precheck", () => {
+describe("PR reviewer precheck", () => {
   it("selects a PR labeled agent:review", () => {
     expect(runPrecheck("precheck-agent-review.json")).toBe(0);
   });

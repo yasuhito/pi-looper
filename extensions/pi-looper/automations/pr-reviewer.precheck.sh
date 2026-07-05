@@ -13,7 +13,7 @@ external_review_wait_seconds="${PI_LOOPER_EXTERNAL_REVIEW_WAIT_SECONDS:-${HERDR_
 automation_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 args=(
-  "${automation_dir}/generic-pr-reviewer-decisions.py"
+  "${automation_dir}/pr-reviewer-decisions.py"
   --review-label "${review_label}"
   --reviewing-label "${reviewing_label}"
   --human-label "${human_label}"

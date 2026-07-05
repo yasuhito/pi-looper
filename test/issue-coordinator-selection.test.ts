@@ -3,12 +3,12 @@ import { spawnSync } from "node:child_process";
 
 import { describe, expect, it } from "vitest";
 
-const decisionScript = "extensions/pi-looper/automations/generic-issue-coordinator-decisions.py";
+const decisionScript = "extensions/pi-looper/automations/issue-coordinator-decisions.py";
 
 function runDecisionFixture(fixtureName: string) {
   const result = spawnSync(
     "python3",
-    [decisionScript, "--fixture", path.join("test/fixtures/generic-issue-coordinator", fixtureName), "--json"],
+    [decisionScript, "--fixture", path.join("test/fixtures/issue-coordinator", fixtureName), "--json"],
     { cwd: process.cwd(), encoding: "utf8" },
   );
   if (result.status !== 0) {
@@ -17,7 +17,7 @@ function runDecisionFixture(fixtureName: string) {
   return JSON.parse(result.stdout);
 }
 
-describe("generic issue coordinator selection", () => {
+describe("issue coordinator selection", () => {
   it("selects an issue labeled ready-for-agent and agent:implement", () => {
     expect(runDecisionFixture("selection-ready-implement.json").number).toBe(1);
   });
