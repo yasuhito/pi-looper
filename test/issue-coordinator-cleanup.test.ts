@@ -10,7 +10,7 @@ const cleanupScript = "extensions/pi-looper/automations/cleanup-completed-worker
 function runCleanupFixture(fixtureName: string) {
   const result = spawnSync(
     "python3",
-    [cleanupScript, "--fixture", `test/fixtures/generic-issue-coordinator/${fixtureName}`, "--plan", "--json"],
+    [cleanupScript, "--fixture", `test/fixtures/issue-coordinator/${fixtureName}`, "--plan", "--json"],
     { cwd: process.cwd(), encoding: "utf8" },
   );
   if (result.status !== 0) {
@@ -67,7 +67,7 @@ function runIssuePrecheckWithCleanupCandidate(): number | null {
       "exit 2",
     ]);
 
-    const result = spawnSync("bash", ["extensions/pi-looper/automations/generic-issue-coordinator.precheck.sh"], {
+    const result = spawnSync("bash", ["extensions/pi-looper/automations/issue-coordinator.precheck.sh"], {
       cwd: process.cwd(),
       env: {
         ...process.env,
@@ -87,7 +87,7 @@ function runIssuePrecheckWithCleanupCandidate(): number | null {
   }
 }
 
-describe("generic issue coordinator cleanup", () => {
+describe("issue coordinator cleanup", () => {
   it("selects a clean matching worktree for a merged PR", () => {
     expect(runCleanupFixture("cleanup-merged-clean.json").candidates).toEqual([
       {
@@ -113,79 +113,79 @@ describe("generic issue coordinator cleanup", () => {
   });
 
   it("starts Herdr with a unique worker agent name", () => {
-    expect(readFileSync("extensions/pi-looper/automations/generic-issue-coordinator.prompt.md", "utf8")).toContain(
+    expect(readFileSync("extensions/pi-looper/automations/issue-coordinator.prompt.md", "utf8")).toContain(
       'herdr agent start "{{projectId}}-issue-<N>-worker"',
     );
   });
 
   it("creates a dedicated tab before starting a worker", () => {
-    expect(readFileSync("extensions/pi-looper/automations/generic-issue-coordinator.prompt.md", "utf8")).toContain(
+    expect(readFileSync("extensions/pi-looper/automations/issue-coordinator.prompt.md", "utf8")).toContain(
       'herdr tab create --workspace <workspaceId> --cwd <worktreePath> --label "{{projectId}}-issue-<N>-worker" --no-focus',
     );
   });
 
   it("starts workers in the dedicated tab", () => {
-    expect(readFileSync("extensions/pi-looper/automations/generic-issue-coordinator.prompt.md", "utf8")).toContain(
+    expect(readFileSync("extensions/pi-looper/automations/issue-coordinator.prompt.md", "utf8")).toContain(
       'herdr agent start "{{projectId}}-issue-<N>-worker" --cwd <worktreePath> --tab <tabId> --no-focus',
     );
   });
 
   it("does not document workspace split startup for workers", () => {
-    expect(readFileSync("extensions/pi-looper/automations/generic-issue-coordinator.prompt.md", "utf8")).not.toMatch(
+    expect(readFileSync("extensions/pi-looper/automations/issue-coordinator.prompt.md", "utf8")).not.toMatch(
       /herdr agent start[^`\n]*--workspace <workspaceId>/,
     );
   });
 
   it("creates a dedicated tab before starting a review worker", () => {
-    expect(readFileSync("extensions/pi-looper/automations/generic-pr-reviewer.prompt.md", "utf8")).toContain(
+    expect(readFileSync("extensions/pi-looper/automations/pr-reviewer.prompt.md", "utf8")).toContain(
       'herdr tab create --workspace <workspaceId> --cwd <worktreePath> --label "$reviewer_name" --no-focus',
     );
   });
 
   it("starts review workers in the dedicated tab", () => {
-    expect(readFileSync("extensions/pi-looper/automations/generic-pr-reviewer.prompt.md", "utf8")).toContain(
+    expect(readFileSync("extensions/pi-looper/automations/pr-reviewer.prompt.md", "utf8")).toContain(
       'herdr agent start "$reviewer_name" --cwd <worktreePath> --tab "$tab_id" --no-focus',
     );
   });
 
   it("does not document workspace split startup for review workers", () => {
-    expect(readFileSync("extensions/pi-looper/automations/generic-pr-reviewer.prompt.md", "utf8")).not.toMatch(
+    expect(readFileSync("extensions/pi-looper/automations/pr-reviewer.prompt.md", "utf8")).not.toMatch(
       /herdr agent start[^`\n]*--workspace <workspaceId>/,
     );
   });
 
   it("documents claude worker startup with a shared session id", () => {
-    expect(readFileSync("extensions/pi-looper/automations/generic-issue-coordinator.prompt.md", "utf8")).toContain(
+    expect(readFileSync("extensions/pi-looper/automations/issue-coordinator.prompt.md", "utf8")).toContain(
       '-- claude --session-id "$uuid"',
     );
   });
 
   it("documents claude worker startup with effort levels", () => {
-    expect(readFileSync("extensions/pi-looper/automations/generic-issue-coordinator.prompt.md", "utf8")).toContain(
+    expect(readFileSync("extensions/pi-looper/automations/issue-coordinator.prompt.md", "utf8")).toContain(
       '--effort "$level"',
     );
   });
 
   it("documents claude worker startup with bypass permissions", () => {
-    expect(readFileSync("extensions/pi-looper/automations/generic-issue-coordinator.prompt.md", "utf8")).toContain(
+    expect(readFileSync("extensions/pi-looper/automations/issue-coordinator.prompt.md", "utf8")).toContain(
       "--permission-mode bypassPermissions",
     );
   });
 
   it("documents claude worker startup with positional prompt text", () => {
-    expect(readFileSync("extensions/pi-looper/automations/generic-issue-coordinator.prompt.md", "utf8")).toContain(
+    expect(readFileSync("extensions/pi-looper/automations/issue-coordinator.prompt.md", "utf8")).toContain(
       '"$worker_prompt_text"',
     );
   });
 
   it("documents separate enter sends when nudging claude workers", () => {
-    expect(readFileSync("extensions/pi-looper/automations/generic-issue-coordinator.prompt.md", "utf8")).toContain(
+    expect(readFileSync("extensions/pi-looper/automations/issue-coordinator.prompt.md", "utf8")).toContain(
       "herdr agent send <t> $'\\r'",
     );
   });
 
   it("documents dedicated tab startup for branch update workers", () => {
-    expect(readFileSync("extensions/pi-looper/automations/generic-pr-reviewer.prompt.md", "utf8")).toContain(
+    expect(readFileSync("extensions/pi-looper/automations/pr-reviewer.prompt.md", "utf8")).toContain(
       "branch update worker を起動する場合も、worker 名と同じ label の専用タブを作ってから `herdr agent start ... --tab <tabId> --no-focus`",
     );
   });

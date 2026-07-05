@@ -85,7 +85,7 @@ prs_json=$(mktemp)
 gh pr list -R {{githubRepo}} --state open --limit 100 \
   --json number,updatedAt,headRefOid,isDraft,labels,statusCheckRollup,comments,reviewRequests \
   > "$prs_json"
-decision_json=$(python3 {{automationDir}}/generic-pr-reviewer-decisions.py \
+decision_json=$(python3 {{automationDir}}/pr-reviewer-decisions.py \
   --input "$prs_json" \
   --review-label "{{reviewLabel}}" \
   --reviewing-label "{{reviewingLabel}}" \
@@ -144,7 +144,7 @@ gh pr view <PR> -R {{githubRepo}} \
   --json number,updatedAt,headRefOid,reviewRequests,comments \
   > "$pr_json"
 head_ref_oid=$(jq -r '.headRefOid' "$pr_json")
-gate_json=$(python3 {{automationDir}}/generic-pr-reviewer-decisions.py \
+gate_json=$(python3 {{automationDir}}/pr-reviewer-decisions.py \
   --mode external-review-gate \
   --input "$pr_json" \
   --external-review-wait-seconds "${PI_LOOPER_EXTERNAL_REVIEW_WAIT_SECONDS:-${HERDR_LOOPER_EXTERNAL_REVIEW_WAIT_SECONDS:-1800}}")

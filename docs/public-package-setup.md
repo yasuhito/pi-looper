@@ -86,13 +86,13 @@ Main control labels:
 
 ### Phase 1: Issue coordination only
 
-Start with only `generic-issue-coordinator` enabled in `automations`. It picks an eligible issue, starts a Herdr worktree with a Pi worker, verifies the result, and creates a PR. Humans still review and merge.
+Start with only `issue-coordinator` enabled in `automations`. It picks an eligible issue, starts a Herdr worktree with a Pi worker, verifies the result, and creates a PR. Humans still review and merge.
 
 Use this phase to check that issue contracts are clear, worker instructions are sufficient, and `checkCommand` catches failures.
 
 ### Phase 2: Add PR reviewer, still no auto-merge
 
-Add `generic-pr-reviewer` only after Phase 1 is reliable. Keep:
+Add `pr-reviewer` only after Phase 1 is reliable. Keep:
 
 ```json
 "autoMerge": false

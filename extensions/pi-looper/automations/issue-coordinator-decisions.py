@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic decisions for generic-issue-coordinator automation."""
+"""Deterministic decisions for issue-coordinator automation."""
 
 from __future__ import annotations
 
@@ -282,5 +282,5 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except Exception as error:
-        print(f"generic-issue-coordinator-decisions.py: {error}", file=sys.stderr)
+        print(f"issue-coordinator-decisions.py: {error}", file=sys.stderr)
         raise SystemExit(2)

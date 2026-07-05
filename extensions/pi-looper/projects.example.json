@@ -30,16 +30,16 @@
           "id": "example-project:issue-coordinator",
           "name": "example-project issue coordinator",
           "schedule": "*/10 * * * *",
-          "promptFile": "generic-issue-coordinator.prompt.md",
-          "precheckFile": "generic-issue-coordinator.precheck.sh",
+          "promptFile": "issue-coordinator.prompt.md",
+          "precheckFile": "issue-coordinator.precheck.sh",
           "precheckTimeoutSeconds": 60
         },
         {
           "id": "example-project:pr-reviewer",
           "name": "example-project PR reviewer",
           "schedule": "*/10 * * * *",
-          "promptFile": "generic-pr-reviewer.prompt.md",
-          "precheckFile": "generic-pr-reviewer.precheck.sh",
+          "promptFile": "pr-reviewer.prompt.md",
+          "precheckFile": "pr-reviewer.precheck.sh",
           "precheckTimeoutSeconds": 60
         }
       ]

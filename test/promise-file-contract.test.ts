@@ -3,8 +3,8 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const contractFiles = [
-  "extensions/pi-looper/automations/generic-issue-coordinator.prompt.md",
-  "extensions/pi-looper/automations/generic-pr-reviewer.prompt.md",
+  "extensions/pi-looper/automations/issue-coordinator.prompt.md",
+  "extensions/pi-looper/automations/pr-reviewer.prompt.md",
   "extensions/pi-looper/automations/extract-worker-promise.py",
 ];
 
@@ -26,19 +26,19 @@ describe("promise file contract", () => {
   });
 
   it("documents unique promise file allocation", () => {
-    expect(readFileSync("extensions/pi-looper/automations/generic-issue-coordinator.prompt.md", "utf8")).toContain(
+    expect(readFileSync("extensions/pi-looper/automations/issue-coordinator.prompt.md", "utf8")).toContain(
       "<worktreePath>/.pi-looper/promise-<uuid>.json",
     );
   });
 
   it("requires blocked workers to write a promise file", () => {
-    expect(readFileSync("extensions/pi-looper/automations/generic-issue-coordinator.prompt.md", "utf8")).toContain(
+    expect(readFileSync("extensions/pi-looper/automations/issue-coordinator.prompt.md", "utf8")).toContain(
       '"status":"blocked"',
     );
   });
 
   it("uses the promise file as the completion authority", () => {
-    expect(readFileSync("extensions/pi-looper/automations/generic-issue-coordinator.prompt.md", "utf8")).toContain(
+    expect(readFileSync("extensions/pi-looper/automations/issue-coordinator.prompt.md", "utf8")).toContain(
       "唯一の完了判定の権威",
     );
   });

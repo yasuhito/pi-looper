@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic decisions for generic-pr-reviewer automation."""
+"""Deterministic decisions for pr-reviewer automation."""
 
 from __future__ import annotations
 
@@ -256,5 +256,5 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except Exception as error:
-        print(f"generic-pr-reviewer-decisions.py: {error}", file=sys.stderr)
+        print(f"pr-reviewer-decisions.py: {error}", file=sys.stderr)
         raise SystemExit(2)
