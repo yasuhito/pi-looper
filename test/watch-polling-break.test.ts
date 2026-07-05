@@ -25,4 +25,14 @@ describe("watch polling break instruction", () => {
     const section = watchSection("pr-reviewer.prompt.md", "### 9. レビューエージェントの監視");
     expect(section).toMatch(/直ちにポーリングを打ち切/);
   });
+
+  it("shows issue-coordinator watch a break-early loop example", () => {
+    const section = watchSection("issue-coordinator.prompt.md", "### 6. Watch");
+    expect(section).toMatch(/complete\|blocked\) break/);
+  });
+
+  it("shows pr-reviewer watch a break-early loop example", () => {
+    const section = watchSection("pr-reviewer.prompt.md", "### 9. レビューエージェントの監視");
+    expect(section).toMatch(/complete\|blocked\) break/);
+  });
 });

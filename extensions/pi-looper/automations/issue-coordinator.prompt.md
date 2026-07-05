@@ -228,16 +228,17 @@ helper の出力例:
    - `{{workerAgent}}` が `claude` の場合、pane 送信の督促は本文と Enter を別々に送る: `herdr agent send <t> "<本文>"` のあと `herdr agent send <t> $'\r'`。
 5. `herdr wait agent-status --status done` は補助に留める。唯一の待機条件にしない。
 
-望ましいループの形（判定確定で `break` する）:
+望ましいループの形（上限を持ちつつ、判定確定で `break` する）:
 
 ```bash
-while true; do
+for _ in $(seq 40); do
   status=$(python3 {{automationDir}}/extract-worker-promise.py --file "<promiseFile>" | jq -r '.status')
   case "$status" in
     complete|blocked) break ;;  # 判定確定。直ちに打ち切って次の手順へ
   esac
   sleep 30
 done
+# 決着したら上限を待たず即 break する。決着しないまま上限に達したら無限には待たず抜ける。
 ```
 
 BLOCKED の場合:
