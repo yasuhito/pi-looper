@@ -98,6 +98,8 @@ gh issue edit <N> -R {{githubRepo}} --remove-label "{{implementLabel}}" --add-la
 
 branch 名は `agent/issue-<N>-<slug>`。slug は issue title から ASCII 小文字、数字、ハイフンだけの短い文字列にする。空なら `task`。
 
+Worker を起動する前に、起動ごとに一意な promise ファイルパスを `<worktreePath>/.pi-looper/promise-<uuid>.json` として採番する。`uuid` は `python3 -c 'import uuid; print(uuid.uuid4())'` などで作る。`<worktreePath>/.pi-looper` を作成し、同じパスの古いファイルがあれば削除してから起動する。採番した promise ファイルパスは Worker prompt に必ず含める。
+
 Worker prompt には必ず以下を含める。
 
 ```markdown
@@ -124,9 +126,11 @@ Issue #<N> を実装してください。
 - issue を閉じない。
 - unrelated な変更を戻さない。
 
-完了出力:
-- 完了したら最後に必ず `<promise>COMPLETE</promise>` を出力してください。
-- 失敗、仕様不足、危険変更、または判断不能なら、最後に必ず `<promise>BLOCKED: 理由</promise>` を日本語で出力してください。
+完了報告:
+- 作業終了時は、司令塔が指定した promise ファイル `<promiseFile>` に必ず JSON を書いてください。
+- 成功時は `{"status":"complete","reason":"","summary":"3文要約(何をした・何が分かった・何が残っている)"}` を書いてください。
+- 失敗、仕様不足、危険変更、または判断不能なら `{"status":"blocked","reason":"日本語の理由","summary":"3文要約(何をした・何が分かった・何が残っている)"}` を書いてください。
+- 失敗時も必ず promise ファイルを書いてください。黙って終了しないでください。
 ```
 
 Worker を起動する前に、issue の難易度から `<launchOptions>` を自分で判断する。方針は次の順に優先する。
@@ -145,35 +149,30 @@ Worker の Herdr agent name は issue ごとに一意にし、既定名 `pi` の
 
 ### 6. Watch
 
-Worker の Pi session JSONL を読み、`role: assistant` の通常テキストに出た promise だけを採用する。pane 文字列、起動時 prompt、`thinking`、tool output、単純な `grep '<promise>'` は誤検出・見落としの原因になるため、判定に使わない。
+採番した promise ファイルだけを、唯一の完了判定の権威として扱う。Herdr の agent status は監視ヒントに限り、完了判定の権威にしない。
 
-promise 検出には必ず付属 helper を使う。
+promise ファイルの確認には必ず付属 helper を使う。
 
 ```bash
-# <paneId> は `herdr agent start` の result.agent.pane_id
-python3 {{automationDir}}/extract-worker-promise.py --pane-id <paneId>
+python3 {{automationDir}}/extract-worker-promise.py --file "<promiseFile>"
 ```
 
 helper の出力例:
 
 ```json
-{"status":"complete","latest":{"promise":"COMPLETE"}}
-{"status":"blocked","latest":{"promise":"BLOCKED: 理由"}}
+{"status":"complete","promise":{"status":"complete","reason":"","summary":"実装した。検証した。残作業なし。"}}
+{"status":"blocked","promise":{"status":"blocked","reason":"理由","summary":"確認した。仕様が足りない。判断待ち。"}}
 {"status":"none"}
+{"status":"invalid","error":"invalid_status"}
 ```
-
-待つ promise:
-
-- `<promise>COMPLETE</promise>` → helper status `complete`
-- `<promise>BLOCKED: ...</promise>` → helper status `blocked`
 
 監視手順:
 
-1. `herdr pane list` で対象 pane の `agent_session.value` が存在することを確認する。
-2. 30秒ごとに helper を実行する。
-3. helper status が `complete` または `blocked` なら採用する。
-4. Herdr の agent status が `idle` / `done` / `blocked` でも、helper status が `none` なら、pane 出力だけで完了扱いしない。追加で最新 session JSONL と pane を確認し、promise が無い場合は worker に promise 出力を依頼する。
-5. `herdr wait agent-status --status done` は補助に留める。`idle` に遷移した完了 worker を取り逃がすことがあるため、唯一の待機条件にしない。
+1. 30秒ごとに helper を実行する。
+2. helper status が `complete` または `blocked` なら採用する。
+3. helper status が `none` または `invalid` なら完了扱いしない。
+4. Herdr の agent status が `idle` / `done` / `blocked` でも、helper status が `none` または `invalid` なら完了扱いしない。Worker に、指定済み promise ファイルへ JSON を書くよう1回依頼する。
+5. `herdr wait agent-status --status done` は補助に留める。唯一の待機条件にしない。
 
 BLOCKED の場合:
 
