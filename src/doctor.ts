@@ -1,5 +1,6 @@
 import path from "node:path";
 
+import { evaluateWorkspaceTrust } from "./agent-trust.cjs";
 import { type NormalizedAutomation, type NormalizedProject, automationStateKey, parseEveryMinutes } from "./core";
 import { type GithubItem, type HerdrWorktree, labelsOf, resolveActiveProject } from "./status";
 
@@ -474,7 +475,10 @@ function buildWorkspaceTrustFindings(
   const repoPath = project.repoPath;
   if (!repoPath) return [];
 
-  if (!claudeConfig || claudeConfig.ok === false) {
+  const trust = evaluateWorkspaceTrust(claudeConfig, repoPath);
+  if (trust === "trusted") return [];
+
+  if (trust === "unknown") {
     return [
       {
         id: `workspace-trust-unknown-${repoPath}`,
@@ -488,9 +492,6 @@ function buildWorkspaceTrustFindings(
       },
     ];
   }
-
-  const trust = claudeConfig.projects?.[repoPath];
-  if (trust?.hasTrustDialogAccepted === true) return [];
 
   return [
     {
