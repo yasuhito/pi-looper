@@ -50,9 +50,9 @@ Key fields:
 - `workerAgent` — worker CLI agent type. Allowed values are `"pi"` and `"claude"`; the default is `"pi"`.
 - `workerModel` — optional worker model passed through verbatim in the format understood by the selected `workerAgent` (`provider/id` for Pi, `opus` / `claude-opus-4-8` style names for Claude Code CLI).
 - `labels` — GitHub labels used to coordinate issue and PR state.
-- `automations` — scheduled automation entries and their prompt/precheck files.
+- `automations` — scheduled automation entries and their prompt/precheck files. Optional `driverFile` entries run bundled deterministic automation scripts after precheck and before sending any prompt; the driver can return `skip`, `done`, `needs_llm`, or `error` JSON to avoid unnecessary LLM context.
 
-Repo policy may set only shared, reviewable policy keys: `workerAgent`, `workerModel`, `reviewerAgent`, `reviewerModel`, `checkCommand`, `workerInstructions`, `workerLaunchPolicy`, `labels`, and `id` / `name` / `promptFile` / `precheckFile` for locally enabled automations. Keep `enabled`, `repoPath`, `githubRepo`, `baseBranch`, `worktreeRoot`, `autoMerge`, `schedule`, and `precheckTimeoutSeconds` local. Invalid JSON or disallowed keys stop that project safely and appear in `/pi-looper-status` and `/pi-looper-doctor`.
+Repo policy may set only shared, reviewable policy keys: `workerAgent`, `workerModel`, `reviewerAgent`, `reviewerModel`, `checkCommand`, `workerInstructions`, `workerLaunchPolicy`, `labels`, and `id` / `name` / `promptFile` / `precheckFile` / `driverFile` for locally enabled automations. Keep `enabled`, `repoPath`, `githubRepo`, `baseBranch`, `worktreeRoot`, `autoMerge`, `schedule`, and `precheckTimeoutSeconds` local. Invalid JSON or disallowed keys stop that project safely and appear in `/pi-looper-status` and `/pi-looper-doctor`.
 
 By default pi-looper reads `~/.pi/agent/pi-looper/projects.json`. Use `PI_LOOPER_CONFIG=/path/to/projects.json` only when you intentionally want a different config file.
 

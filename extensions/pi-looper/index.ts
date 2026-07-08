@@ -28,6 +28,7 @@ const {
 } = require("../../src/doctor.ts");
 const { buildStatusSnapshot, formatStatusReport } = require("../../src/status.ts");
 const { readClaudeConfig } = require("../../src/agent-trust.cjs");
+const { runScheduledAutomation } = require("../../src/automation-runner.ts");
 
 const CONFIG_DIR = process.env.PI_CODING_AGENT_DIR || path.join(os.homedir(), ".pi", "agent");
 const STATE_DIR = path.join(CONFIG_DIR, EXTENSION_NAME);
@@ -49,7 +50,11 @@ function resolveExtensionDir() {
 }
 
 const EXTENSION_DIR = resolveExtensionDir();
-const CODE_FRESHNESS_SOURCE_PATHS = [__filename, path.resolve(__dirname, "../../src/core.ts")];
+const CODE_FRESHNESS_SOURCE_PATHS = [
+  __filename,
+  path.resolve(__dirname, "../../src/core.ts"),
+  path.resolve(__dirname, "../../src/automation-runner.ts"),
+];
 const CONFIG_PATH = resolveConfigPath({
   env: process.env,
   stateDir: STATE_DIR,
@@ -353,14 +358,14 @@ function resolveAutomationFileInDir(kind, automation, requested) {
   return resolution;
 }
 
-async function runPrecheck(pi, project, automation, precheckFile) {
-  const precheckPath = path.join(AUTOMATION_DIR, precheckFile);
+async function runAutomationScript(pi, project, automation, automationFile) {
+  const scriptPath = path.join(AUTOMATION_DIR, automationFile);
   const env = automationEnv(project, automation);
   const exports = Object.entries(env)
     .filter(([key]) => key.startsWith("PI_LOOPER_"))
     .map(([key, value]) => `${key}=${shellQuote(value)}`)
     .join(" ");
-  return await pi.exec("bash", ["-lc", `${exports} ${shellQuote(precheckPath)}`], {
+  return await pi.exec("bash", ["-lc", `${exports} ${shellQuote(scriptPath)}`], {
     timeout: automation.precheckTimeoutSeconds * 1000,
   });
 }
@@ -561,109 +566,25 @@ async function buildLiveDoctorReport(pi, cwd) {
   const data = await collectLiveSnapshotData(pi, cwd, { includeIssueComments: true, includeAgents: true });
   return formatDoctorReport(buildDoctorSnapshot(data));
 }
-function isAutomationFailureResult(result) {
-  return result === "precheck_error" || result === "send_error" || result === "precheck_file_missing";
-}
-
-// Records lastResult and keeps failureStreak = number of consecutive identical failures,
-// so doctor can detect a spinning loop from a single state.json snapshot.
-function recordAutomationResult(entry, result) {
-  if (isAutomationFailureResult(result)) {
-    entry.failureStreak = (entry.lastResult === result ? entry.failureStreak || 0 : 0) + 1;
-  } else {
-    entry.failureStreak = 0;
-  }
-  entry.lastResult = result;
-}
-
 async function runAutomation(pi, ctx, project, automation, dueSlot, state) {
-  const now = Date.now();
-  const key = automationStateKey(project, automation);
-  const entry = state.automations[key] || {};
-  state.automations[key] = entry;
-
-  entry.lastScheduledAt = dueSlot;
-  entry.lastAttemptAt = now;
-  entry.updatedAt = now;
-  entry.name = automation.name;
-  entry.projectId = project.id;
-  entry.schedule = automation.schedule;
-  saveState(state);
-
-  const precheck = resolveAutomationFileInDir("precheck", automation, automation.precheckFile);
-  if (!precheck.found) {
-    recordAutomationResult(entry, "precheck_file_missing");
-    entry.lastError = `precheck file not found: ${automation.precheckFile}`;
-    entry.updatedAt = Date.now();
-    saveState(state);
-    try {
-      ctx.ui.notify(`${EXTENSION_NAME} precheck file missing: ${automation.name}`, "warning");
-    } catch {}
-    return;
-  }
-
-  setLooperStatus(ctx, `precheck: ${automation.name}`);
-
-  let result;
-  try {
-    result = await runPrecheck(pi, project, automation, precheck.resolved);
-  } catch (error) {
-    recordAutomationResult(entry, "precheck_error");
-    entry.lastError = error?.message || String(error);
-    entry.updatedAt = Date.now();
-    saveState(state);
-    try {
-      ctx.ui.notify(`${EXTENSION_NAME} precheck failed: ${automation.name}`, "warning");
-    } catch {}
-    return;
-  }
-
-  if (result.code !== 0) {
-    recordAutomationResult(entry, `precheck_skipped:${result.code}`);
-    entry.lastSkippedAt = Date.now();
-    entry.updatedAt = Date.now();
-    saveState(state);
-    return;
-  }
-
-  if (typeof ctx.isIdle === "function" && !ctx.isIdle()) {
-    recordAutomationResult(entry, "deferred_busy_after_precheck");
-    entry.updatedAt = Date.now();
-    saveState(state);
-    return;
-  }
-
-  const promptResolution = resolveAutomationFileInDir("prompt", automation, automation.promptFile);
-  if (!promptResolution.found) {
-    entry.lastResult = "prompt_file_missing";
-    entry.lastError = `prompt file not found: ${automation.promptFile}`;
-    entry.updatedAt = Date.now();
-    saveState(state);
-    try {
-      ctx.ui.notify(`${EXTENSION_NAME} prompt file missing: ${automation.name}`, "warning");
-    } catch {}
-    return;
-  }
-
-  try {
-    const prompt = readPrompt(project, automation, promptResolution.resolved);
-    pi.sendUserMessage(prompt);
-    recordAutomationResult(entry, "queued");
-    entry.lastQueuedAt = Date.now();
-    entry.updatedAt = Date.now();
-    saveState(state);
-    try {
-      ctx.ui.notify(`${EXTENSION_NAME} queued: ${automation.name}`, "info");
-    } catch {}
-  } catch (error) {
-    recordAutomationResult(entry, "send_error");
-    entry.lastError = error?.message || String(error);
-    entry.updatedAt = Date.now();
-    saveState(state);
-    try {
-      ctx.ui.notify(`${EXTENSION_NAME} send failed: ${automation.name}`, "error");
-    } catch {}
-  }
+  await runScheduledAutomation(project, automation, dueSlot, state, {
+    isIdle: typeof ctx.isIdle === "function" ? () => ctx.isIdle() : undefined,
+    notify: (message, level) => {
+      try {
+        ctx.ui.notify(message.replace(/^pi-looper /, `${EXTENSION_NAME} `), level);
+      } catch {}
+    },
+    now: () => Date.now(),
+    readPrompt,
+    resolveAutomationFileInDir,
+    runDriver: async (driverProject, driverAutomation, driverFile) =>
+      await runAutomationScript(pi, driverProject, driverAutomation, driverFile),
+    runPrecheck: async (precheckProject, precheckAutomation, precheckFile) =>
+      await runAutomationScript(pi, precheckProject, precheckAutomation, precheckFile),
+    saveState,
+    sendUserMessage: (prompt) => pi.sendUserMessage(prompt),
+    setStatus: (text) => setLooperStatus(ctx, text),
+  });
 }
 
 export default function (pi) {

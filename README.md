@@ -136,9 +136,9 @@ PI_LOOPER_CONFIG=/path/to/projects.json pi
 - `reviewerAgent` — レビューエージェントを起動するエージェント種別。列挙値は `"pi"` / `"claude"`、未設定時は `"pi"`。`"claude"` を使う場合は、対象リポジトリのルートで operator が一度 `claude` を対話起動し、Claude Code の workspace trust を受け入れておく
 - `reviewerModel` — レビューエージェントの使用モデル。選択した `reviewerAgent` が理解する形式で書く（`pi` は `provider/id`、`claude` は `opus` / `claude-opus-4-8` など）。実装(重い)とレビュー(軽い)でサブスクリプションの消費先を分けられるよう独立させている
 - `labels` — Issue / PR のラベル
-- `automations` — schedule、prompt、precheck
+- `automations` — schedule、prompt、precheck、任意の決定論的ドライバー。`driverFile` を設定すると、事前確認の通過後、プロンプト送信前に同梱された自動化スクリプトを実行し、`skip` / `done` / `needs_llm` / `error` の JSON 結果で LLM 呼び出しを絞れます
 
-`pi-looper.project.json` で共有できるのは、`workerAgent`、`workerModel`、`reviewerAgent`、`reviewerModel`、`checkCommand`、`workerInstructions`、`workerLaunchPolicy`、`labels`、およびローカルで有効化済みの `automations` に対する `id` / `name` / `promptFile` / `precheckFile` だけです。`enabled`、`repoPath`、`githubRepo`、`baseBranch`、`worktreeRoot`、`autoMerge`、`schedule`、`precheckTimeoutSeconds` はローカル設定に残します。特に `autoMerge` はリポジトリ設定から有効化できません。
+`pi-looper.project.json` で共有できるのは、`workerAgent`、`workerModel`、`reviewerAgent`、`reviewerModel`、`checkCommand`、`workerInstructions`、`workerLaunchPolicy`、`labels`、およびローカルで有効化済みの `automations` に対する `id` / `name` / `promptFile` / `precheckFile` / `driverFile` だけです。`enabled`、`repoPath`、`githubRepo`、`baseBranch`、`worktreeRoot`、`autoMerge`、`schedule`、`precheckTimeoutSeconds` はローカル設定に残します。特に `autoMerge` はリポジトリ設定から有効化できません。
 
 共有ポリシー例:
 

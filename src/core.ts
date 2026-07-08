@@ -34,6 +34,7 @@ export type RawAutomation = {
   graceMinutes?: number;
   promptFile?: string;
   precheckFile?: string;
+  driverFile?: string;
   precheckTimeoutSeconds?: number;
   initialLastScheduledAt?: number;
 };
@@ -46,6 +47,7 @@ export type NormalizedAutomation = {
   graceMinutes: number;
   promptFile?: string;
   precheckFile?: string;
+  driverFile?: string;
   precheckTimeoutSeconds: number;
   initialLastScheduledAt: number;
 };
@@ -131,6 +133,9 @@ export type AutomationStateEntry = {
   lastScheduledAt?: number;
   lastAttemptAt?: number;
   lastResult?: string;
+  lastError?: string;
+  lastSummary?: string;
+  lastDriverAction?: string;
   failureStreak?: number;
   updatedAt?: number;
 };
@@ -240,6 +245,7 @@ export function normalizeAutomation(
     graceMinutes: Number.isFinite(automation.graceMinutes) ? automation.graceMinutes! : 720,
     promptFile: automation.promptFile,
     precheckFile: automation.precheckFile,
+    driverFile: automation.driverFile,
     precheckTimeoutSeconds: Number.isFinite(automation.precheckTimeoutSeconds)
       ? automation.precheckTimeoutSeconds!
       : 60,
@@ -287,7 +293,7 @@ const REPO_POLICY_LABEL_KEYS = new Set([
   "wontfix",
   "needsTriage",
 ]);
-const REPO_POLICY_AUTOMATION_KEYS = new Set(["id", "name", "promptFile", "precheckFile"]);
+const REPO_POLICY_AUTOMATION_KEYS = new Set(["id", "name", "promptFile", "precheckFile", "driverFile"]);
 
 function validateObject(value: unknown, context: string): asserts value is Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -331,7 +337,12 @@ function parseRepoPolicy(text: string): RawProject {
   }
 }
 
-function mergeIfLocalMissing<T extends Record<string, unknown>>(target: T, local: T, policy: T, keys: string[]): string[] {
+function mergeIfLocalMissing<T extends Record<string, unknown>>(
+  target: T,
+  local: T,
+  policy: T,
+  keys: string[],
+): string[] {
   const applied: string[] = [];
   for (const key of keys) {
     if (policy[key] === undefined || hasOwn(local, key)) continue;
@@ -410,7 +421,10 @@ export type ProjectsFromConfigOptions = {
   repoPolicyProvider?: RepoPolicyProvider;
 };
 
-function applyRepoPolicy(raw: RawProject, options: ProjectsFromConfigOptions = {}): { raw: RawProject; source: ProjectConfigSource } {
+function applyRepoPolicy(
+  raw: RawProject,
+  options: ProjectsFromConfigOptions = {},
+): { raw: RawProject; source: ProjectConfigSource } {
   const source = defaultConfigSource(raw, options.configPath);
   if (!options.repoPolicyProvider) return { raw, source };
   const result = options.repoPolicyProvider(raw);
@@ -426,7 +440,11 @@ function applyRepoPolicy(raw: RawProject, options: ProjectsFromConfigOptions = {
   return { raw: merged.project, source };
 }
 function normalizeLocalCommands(value: string | string[] | undefined): string {
-  if (Array.isArray(value)) return value.map((command) => String(command).trim()).filter(Boolean).join("\n");
+  if (Array.isArray(value))
+    return value
+      .map((command) => String(command).trim())
+      .filter(Boolean)
+      .join("\n");
   return String(value || "").trim();
 }
 

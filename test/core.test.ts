@@ -246,9 +246,7 @@ describe("deterministic extension core", () => {
   it("exposes the worker agent to prompt templates", () => {
     const project = normalizeProject({ workerAgent: "claude", automations: [{}] });
 
-    expect(renderTemplate("{{workerAgent}}", templateValues(project, project.automations[0], "/auto"))).toBe(
-      "claude",
-    );
+    expect(renderTemplate("{{workerAgent}}", templateValues(project, project.automations[0], "/auto"))).toBe("claude");
   });
 
   it("exposes the reviewer agent to prompt templates", () => {
@@ -286,15 +284,24 @@ describe("deterministic extension core", () => {
       automations: [{}],
     });
 
-    expect(renderTemplate("{{ciFallbackEnabled}}|{{ciFallbackAllowAutoMerge}}|{{ciFallbackLocalCommands}}", templateValues(project, project.automations[0], "/auto"))).toBe(
-      "true|true|git diff --check\nnpm test",
-    );
+    expect(
+      renderTemplate(
+        "{{ciFallbackEnabled}}|{{ciFallbackAllowAutoMerge}}|{{ciFallbackLocalCommands}}",
+        templateValues(project, project.automations[0], "/auto"),
+      ),
+    ).toBe("true|true|git diff --check\nnpm test");
   });
 
   it("exposes auto merge state to prompt templates", () => {
     const project = normalizeProject({ automations: [{}] });
 
     expect(renderTemplate("{{autoMerge}}", templateValues(project, project.automations[0], "/auto"))).toBe("false");
+  });
+
+  it("preserves an automation driver file from project config", () => {
+    const project = normalizeProject({ automations: [{ driverFile: "issue-coordinator-driver.py" }] });
+
+    expect(project.automations[0].driverFile).toBe("issue-coordinator-driver.py");
   });
 
   it("uses reloaded project settings during tick resolution", () => {
@@ -335,6 +342,21 @@ describe("deterministic extension core", () => {
     );
 
     expect(result.ok && result.projects[0].workerModel).toBe("local-model");
+  });
+
+  it("allows trusted repo policy to provide automation driver files", () => {
+    const result = parseProjectsConfig(
+      JSON.stringify({ projects: [{ id: "demo", repoPath: "/repo", automations: [{ id: "demo:auto" }] }] }),
+      "",
+      {
+        repoPolicyProvider: () => ({
+          status: "loaded",
+          text: JSON.stringify({ automations: [{ id: "demo:auto", driverFile: "issue-coordinator-driver.py" }] }),
+        }),
+      },
+    );
+
+    expect(result.ok && result.projects[0].automations[0].driverFile).toBe("issue-coordinator-driver.py");
   });
 
   it("rejects forbidden trusted repo policy keys", () => {
