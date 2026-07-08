@@ -5,6 +5,14 @@
 const fs = require("node:fs") as typeof import("node:fs");
 const path = require("node:path") as typeof import("node:path");
 const { spawnSync } = require("node:child_process") as typeof import("node:child_process");
+const {
+  defaultIssueDecisionConfig,
+  fixtureDecision,
+  issueBlockedByNumbers,
+  issueNumberForDecision,
+  liveDependencyState,
+  selectIssueForImplementation,
+} = require("./issue-coordinator-decisions.ts");
 const { renderIssueBlockedComment } = require("../../../src/issue-coordinator-renderers.ts");
 
 type JsonObject = Record<string, any>;
@@ -16,7 +24,6 @@ type DriverResult = {
 };
 
 const SCRIPT_DIR = __dirname;
-const DECISION_SCRIPT = path.join(SCRIPT_DIR, "issue-coordinator-decisions.py");
 const CLEANUP_SCRIPT = path.join(SCRIPT_DIR, "cleanup-completed-worker-worktrees.py");
 
 const CONTRACT_BRIEF_RE = /^##\s*(?:Agent Brief|What to build)\b/im;
@@ -88,33 +95,27 @@ function issueList(fixture: JsonObject | null, repo: string): JsonObject[] {
   ]);
 }
 
+function decisionConfig(env: ReturnType<typeof envConfig>): JsonObject {
+  return defaultIssueDecisionConfig({
+    readyLabel: env.readyLabel,
+    implementLabel: env.implementLabel,
+    inProgressLabel: env.inProgressLabel,
+    blockedLabel: env.blockedLabel,
+    humanLabel: env.humanLabel,
+    needsInfoLabel: env.needsInfoLabel,
+    wontfixLabel: env.wontfixLabel,
+  });
+}
+
 function decisionForIssues(fixturePath: string | undefined, issues: JsonObject[], repo: string, env: ReturnType<typeof envConfig>): JsonObject {
-  const args = [
-    "python3",
-    DECISION_SCRIPT,
-    "--json",
-    "--repo",
-    repo,
-    "--ready-label",
-    env.readyLabel,
-    "--implement-label",
-    env.implementLabel,
-    "--in-progress-label",
-    env.inProgressLabel,
-    "--blocked-label",
-    env.blockedLabel,
-    "--human-label",
-    env.humanLabel,
-    "--needs-info-label",
-    env.needsInfoLabel,
-    "--wontfix-label",
-    env.wontfixLabel,
-  ];
-  if (fixturePath) {
-    args.push("--fixture", fixturePath);
-    return runJson(args);
-  }
-  return runJson(args, { input: JSON.stringify(issues) });
+  const config = decisionConfig(env);
+  if (fixturePath) return fixtureDecision(fixturePath, config);
+  return selectIssueForImplementation(
+    issues,
+    config,
+    (issue: JsonObject) => issueBlockedByNumbers(repo, issueNumberForDecision(issue)),
+    (number: number) => liveDependencyState(repo, number),
+  );
 }
 
 function selectedIssue(issues: JsonObject[], number: number): JsonObject {

@@ -22,7 +22,7 @@ needs_info_label="${PI_LOOPER_NEEDS_INFO_LABEL:-needs-info}"
 wontfix_label="${PI_LOOPER_WONTFIX_LABEL:-wontfix}"
 
 gh issue list -R "$repo" --state open --limit 200 --json number,title,body,labels,updatedAt \
-  | python3 "$SCRIPT_DIR/issue-coordinator-decisions.py" \
+  | node "$SCRIPT_DIR/issue-coordinator-decisions.ts" \
       --repo "$repo" \
       --ready-label "$ready_label" \
       --implement-label "$implement_label" \
