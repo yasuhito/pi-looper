@@ -3,11 +3,11 @@ import { spawnSync } from "node:child_process";
 
 import { describe, expect, it } from "vitest";
 
-const decisionScript = "extensions/pi-looper/automations/pr-branch-update-decision.py";
+const decisionScript = "extensions/pi-looper/automations/pr-branch-update-decision.ts";
 
 function runDecisionFixture(fixtureName: string) {
   const result = spawnSync(
-    "python3",
+    "node",
     [decisionScript, "--fixture", path.join("test/fixtures/pr-branch-update", fixtureName)],
     { cwd: process.cwd(), encoding: "utf8" },
   );
