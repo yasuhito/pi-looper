@@ -29,7 +29,8 @@ const CLEANUP_SCRIPT = path.join(SCRIPT_DIR, "cleanup-completed-worker-worktrees
 
 const CONTRACT_BRIEF_RE = /^##\s*(?:Agent Brief|What to build)\b/im;
 const CONTRACT_ACCEPTANCE_RE = /^##\s*(?:Acceptance criteria|受け入れ条件)\b|\bAcceptance criteria\b|受け入れ条件/im;
-const PRD_ONLY_RE = /^##\s*(?:PRD|RFC|設計|計画)\b|\b(?:PRD|RFC)\b/im;
+const PLANNING_TITLE_RE = /^\s*(?:PRD|RFC|設計|計画)\b/i;
+const PLANNING_SECTION_RE = /^##\s*(?:PRD|RFC|設計|計画)\b/im;
 const TASK_LIST_RE = /^\s*- \[[ xX]\] .+#\d+/m;
 
 function driverResult(action: DriverResult["action"], summary: string, extra: JsonObject = {}): DriverResult {
@@ -129,8 +130,9 @@ function hasImplementationContract(issue: JsonObject): boolean {
 }
 
 function isBlockedPlanningIssue(issue: JsonObject): boolean {
-  const text = `${String(issue.title || "")}\n${String(issue.body || "")}`;
-  return PRD_ONLY_RE.test(text) || TASK_LIST_RE.test(String(issue.body || ""));
+  const title = String(issue.title || "");
+  const body = String(issue.body || "");
+  return PLANNING_TITLE_RE.test(title) || PLANNING_SECTION_RE.test(body) || TASK_LIST_RE.test(body);
 }
 
 function gateMissingContractComment(issue: JsonObject): string {

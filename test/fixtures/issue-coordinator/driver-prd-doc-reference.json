@@ -1,0 +1,12 @@
+{
+  "cleanup": {"candidates": []},
+  "issues": [
+    {
+      "number": 70,
+      "title": "Add prompt budget tests for automation token hygiene",
+      "body": "## Agent Brief\nAdd a small token-hygiene baseline.\n\nScope:\n- Add tests that read automation prompt files.\n- Add a short note to `docs/token-hygiene-driver-prd.md` if needed.\n\n## Acceptance criteria\n- A test fails if prompts exceed budget.\n- npm test passes.",
+      "url": "https://github.com/owner/repo/issues/70",
+      "labels": [{"name": "ready-for-agent"}, {"name": "agent:implement"}]
+    }
+  ]
+}

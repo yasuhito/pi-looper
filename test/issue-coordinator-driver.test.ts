@@ -47,6 +47,10 @@ describe("issue coordinator deterministic driver", () => {
     expect(runDriverFixture("driver-blocked-prd.json").comment).toContain("## 復旧手順");
   });
 
+  it("does not block implementable issues that only reference a PRD document path", () => {
+    expect(runDriverFixture("driver-prd-doc-reference.json").driverAction).toBe("worker_launch_request");
+  });
+
   it("requests a bounded LLM worker-launch prompt for ready issues", () => {
     expect(runDriverFixture("driver-ready-worker.json").driverAction).toBe("worker_launch_request");
   });
