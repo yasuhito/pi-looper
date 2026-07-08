@@ -190,6 +190,10 @@ Required safety contract:
 - Use a unique Worker name like \`${workerName}\`; never use the default \`pi\` name.
 - Create a Herdr worktree and then a dedicated tab with \`herdr tab create --workspace <workspaceId> --cwd <worktreePath> --label "${workerName}" --no-focus\`.
 - Render the Worker prompt with \`src/issue-coordinator-renderers.ts\` / \`renderIssueWorkerPrompt\` semantics, including promise file \`<worktreePath>/.pi-looper/promise-<uuid>.json\`.
+- Preserve these renderer inputs when writing \`$prompt_file\`:
+  - launchReason: Deterministic issue-coordinator driver selected Issue #${number}.
+  - workerInstructions: ${oneLineForDriver(env.workerInstructions)}
+  - checkCommand: ${oneLineForDriver(env.checkCommand)}
 - Start the Worker only through \`node ${env.automationDir}/launch-agent.ts --agent "${env.workerAgent}" --name "$worker_name" --cwd "$worktree_path" --repo-path ${shellQuoteForDriver(env.repoPath)} --level "$level" --model "${env.workerModel}" --uuid "$uuid" --prompt-file "$prompt_file" --tab "$tab_id"\`.
 - The promise file is the only completion authority. When \`complete\` or \`blocked\` appears, break polling immediately (\`complete|blocked) break\`). Do not use Herdr status as completion authority.
 - After a complete promise, run validation including \`${env.checkCommand}\`, create a reviewable PR, add \`${env.reviewLabel}\`, and preserve existing safety rules.
@@ -206,6 +210,7 @@ function envConfig() {
     automationDir: SCRIPT_DIR,
     checkCommand: process.env.PI_LOOPER_CHECK_COMMAND || "git diff --check",
     workerAgent: process.env.PI_LOOPER_WORKER_AGENT || "pi",
+    workerInstructions: process.env.PI_LOOPER_WORKER_INSTRUCTIONS || "",
     workerModel: process.env.PI_LOOPER_WORKER_MODEL || "",
     readyLabel: process.env.PI_LOOPER_READY_LABEL || "ready-for-agent",
     implementLabel: process.env.PI_LOOPER_IMPLEMENT_LABEL || "agent:implement",

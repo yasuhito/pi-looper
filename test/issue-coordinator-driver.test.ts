@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 
 const driverScript = "extensions/pi-looper/automations/issue-coordinator-driver.ts";
 
-function runDriverFixture(fixtureName: string) {
+function runDriverFixture(fixtureName: string, envOverride: Record<string, string> = {}) {
   const result = spawnSync("node", [driverScript, "--fixture", path.join("test/fixtures/issue-coordinator", fixtureName)], {
     cwd: process.cwd(),
     encoding: "utf8",
@@ -17,6 +17,7 @@ function runDriverFixture(fixtureName: string) {
       PI_LOOPER_GITHUB_REPO: "owner/repo",
       PI_LOOPER_CHECK_COMMAND: "npm test",
       PI_LOOPER_WORKER_AGENT: "pi",
+      ...envOverride,
     },
   });
   if (result.status !== 0) {
@@ -68,6 +69,12 @@ describe("issue coordinator deterministic driver", () => {
 
   it("receives worker model settings from the extension environment", () => {
     expect(readFileSync("extensions/pi-looper/index.ts", "utf8")).toContain("PI_LOOPER_WORKER_MODEL");
+  });
+
+  it("passes worker instructions to the worker prompt renderer request", () => {
+    expect(
+      runDriverFixture("driver-ready-worker.json", { PI_LOOPER_WORKER_INSTRUCTIONS: "AGENTS.md と docs/dogfooding.md を読む。" }).prompt,
+    ).toContain("workerInstructions: AGENTS.md と docs/dogfooding.md を読む。");
   });
 
   it("uses the TypeScript renderer for blocked comments", () => {
