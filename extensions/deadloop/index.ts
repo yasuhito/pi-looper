@@ -225,13 +225,18 @@ function extensionCodeWarning() {
   return codeFreshnessWarning(MODULE_LOAD_TIME_MS, sources);
 }
 
-function statusWarnings(extraWarnings = []) {
-  return [extensionCodeWarning(), ...extraWarnings].filter(Boolean);
+function ownsSchedulerLock(project) {
+  const lock = readLock(projectLockPath(project));
+  return Number(lock?.pid) === process.pid;
+}
+
+function statusWarnings(extraWarnings = [], project = null) {
+  const freshnessWarning = project && ownsSchedulerLock(project) ? extensionCodeWarning() : null;
+  return [freshnessWarning, ...extraWarnings].filter(Boolean);
 }
 
 function statusText(text) {
-  const warning = extensionCodeWarning();
-  return warning ? `${warning} | ${text}` : text;
+  return text;
 }
 
 function setLooperStatus(ctx, text) {
@@ -439,8 +444,8 @@ async function collectLiveSnapshotData(
   const projectsResult = loadProjectsResult(cwd);
   const projects = projectsResult.ok ? projectsResult.projects : [];
   const state = loadState();
-  const warnings = statusWarnings(projectsResult.ok ? projectsResult.warnings : [projectsResult.reason]);
   const project = activeProject(cwd, projects);
+  const warnings = statusWarnings(projectsResult.ok ? projectsResult.warnings : [projectsResult.reason], project);
   if (!project) {
     return { cwd, projects, state, warnings };
   }
