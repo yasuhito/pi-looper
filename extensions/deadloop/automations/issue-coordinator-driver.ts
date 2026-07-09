@@ -8,6 +8,7 @@ const { randomUUID } = require("node:crypto") as typeof import("node:crypto");
 const { decisionForIssues, planIssueCoordinatorAction } = require("./issue-coordinator-flow.ts");
 const { renderIssueBlockedComment, renderIssueWorkerPrompt } = require("../../../src/issue-coordinator-renderers.ts");
 const { launchAgentFlow } = require("../../../src/agent-launch-flow.ts");
+const { renderIssueMonitorPrompt } = require("../../../src/monitor-prompts.ts");
 const {
   createCommandRunner,
   createHerdrRunnerFromCommandRunner,
@@ -101,31 +102,6 @@ function slugForBranch(value: unknown): string {
 
 function shouldSimulateLaunch(fixture: JsonObject | null): boolean {
   return Boolean(fixture);
-}
-
-function issueMonitorPrompt(issue: JsonObject, env: ReturnType<typeof envConfig>, launch: JsonObject): string {
-  const number = Number(issue.number || 0);
-  return `Deterministic driver launched Worker for Issue #${number}. Do not launch another agent and do not reselect another issue.
-
-Monitor only this promise file. It is the only completion authority:
-- ${launch.promiseFile}
-
-Polling rules:
-- Use \`node ${env.automationDir}/extract-worker-promise.ts --file ${launch.promiseFile}\`.
-- If the promise status is \`complete\` or \`blocked\`, break polling immediately. Do not use Herdr status as completion authority.
-- If the promise is missing while the agent is idle/done, ask the Worker to write the promise file instead of guessing completion.
-
-After a \`complete\` promise:
-- Inspect \`${launch.worktreePath}\` and confirm only Issue #${number} changes are present.
-- Run validation including \`${env.checkCommand}\` before creating any PR.
-- Push only the Worker branch \`${launch.branch}\` without force-push, create a reviewable PR linked to Issue #${number}, and add \`${env.reviewLabel}\`.
-- Do not close the issue or merge the PR.
-
-After a \`blocked\` promise:
-- Use the promise reason/summary to report the blocker.
-- Move the issue from \`${env.inProgressLabel}\` to \`${env.blockedLabel}\` only when the blocker is actionable.
-
-Report only the resulting action and evidence.`;
 }
 
 function launchIssueWorker(issue: JsonObject, env: ReturnType<typeof envConfig>, fixture: JsonObject | null): JsonObject {
@@ -244,7 +220,18 @@ function drive(fixturePath: string | undefined): DriverResult {
     driverAction: "worker_monitor_request",
     issueNumber: issue.number,
     launch,
-    prompt: issueMonitorPrompt(issue, env, launch),
+    prompt: renderIssueMonitorPrompt({
+      issueNumber: Number(issue.number || 0),
+      automationDir: env.automationDir,
+      promiseFile: String(launch.promiseFile || ""),
+      actorName: "Worker",
+      worktreePath: String(launch.worktreePath || ""),
+      branch: String(launch.branch || ""),
+      checkCommand: env.checkCommand,
+      reviewLabel: env.reviewLabel,
+      inProgressLabel: env.inProgressLabel,
+      blockedLabel: env.blockedLabel,
+    }),
   });
 }
 

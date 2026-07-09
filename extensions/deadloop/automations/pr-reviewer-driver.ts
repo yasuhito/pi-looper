@@ -6,6 +6,7 @@ const fs = require("node:fs") as typeof import("node:fs");
 const { randomUUID } = require("node:crypto") as typeof import("node:crypto");
 const { planPrReviewerAction } = require("./pr-reviewer-flow.ts");
 const { launchAgentFlow } = require("../../../src/agent-launch-flow.ts");
+const { renderReviewerMonitorPrompt } = require("../../../src/monitor-prompts.ts");
 const {
   createCommandRunner,
   createHerdrRunnerFromCommandRunner,
@@ -67,31 +68,6 @@ function liveAgents(): any {
 
 function shouldSimulateLaunch(fixture: JsonObject | null): boolean {
   return Boolean(fixture);
-}
-
-function reviewerMonitorPrompt(pr: JsonObject, env: ReturnType<typeof envConfig>, launch: JsonObject): string {
-  const number = Number(pr.number || 0);
-  return `Deterministic driver launched reviewer for PR #${number}. Do not launch another agent and do not reselect another PR.
-
-Monitor only this promise file. It is the only completion authority:
-- ${launch.promiseFile}
-
-Polling rules:
-- Use \`node ${env.automationDir}/extract-worker-promise.ts --file ${launch.promiseFile}\`.
-- If the promise status is \`complete\` or \`blocked\`, break polling immediately. Do not use Herdr status as completion authority.
-- If the promise is missing while the agent is idle/done, ask the reviewer to write the promise file instead of guessing completion.
-
-After a \`complete\` promise:
-- Re-check GitHub PR state, reviews, and checks before changing labels.
-- Run local validation including \`${env.checkCommand}\` when needed for CI fallback; do not ignore failing checks by guesswork.
-- If autoMerge=false, never merge; hand off by moving PR toward \`${env.humanLabel}\` with review evidence.
-- If autoMerge=true, merge only after review, CI/fallback, and repository safety gates all pass.
-
-After a \`blocked\` promise:
-- Use the promise reason/summary to write the blocked report.
-- Move the PR from \`${env.reviewingLabel}\` to \`${env.blockedLabel}\` only when the blocker is actionable.
-
-Report only the resulting action and evidence.`;
 }
 
 function reviewAgentPrompt(pr: JsonObject, env: ReturnType<typeof envConfig>, promiseFile: string, reason: string): string {
@@ -260,7 +236,16 @@ function drive(fixturePath: string | undefined): DriverResult {
     prNumber: decision.number,
     gate,
     launch,
-    prompt: reviewerMonitorPrompt(pr, env, launch),
+    prompt: renderReviewerMonitorPrompt({
+      prNumber: Number(pr.number || 0),
+      automationDir: env.automationDir,
+      promiseFile: String(launch.promiseFile || ""),
+      actorName: "reviewer",
+      checkCommand: env.checkCommand,
+      humanLabel: env.humanLabel,
+      reviewingLabel: env.reviewingLabel,
+      blockedLabel: env.blockedLabel,
+    }),
   });
 }
 
