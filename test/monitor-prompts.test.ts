@@ -34,7 +34,24 @@ describe("monitor prompts", () => {
       blockedLabel: "agent:blocked",
     });
 
-    expect(prompt).toContain("create a reviewable PR linked to Issue #12");
+    expect(prompt).toContain("create a reviewable PR whose body includes `Closes #12`");
+  });
+
+  it("keeps manual issue close forbidden", () => {
+    const prompt = renderIssueMonitorPrompt({
+      issueNumber: 12,
+      automationDir: "/automation",
+      promiseFile: "/wt/.deadloop/promise-u.json",
+      actorName: "Worker",
+      worktreePath: "/wt",
+      branch: "agent/issue-12-demo",
+      checkCommand: "npm test",
+      reviewLabel: "agent:review",
+      inProgressLabel: "agent:in-progress",
+      blockedLabel: "agent:blocked",
+    });
+
+    expect(prompt).toContain("Do not manually close the issue with GitHub commands");
   });
 
   it("renders reviewer-specific completion instructions", () => {

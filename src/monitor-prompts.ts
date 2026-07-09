@@ -40,8 +40,8 @@ ${renderPromisePollingRules(input)}
 After a \`complete\` promise:
 - Inspect \`${input.worktreePath}\` and confirm only Issue #${input.issueNumber} changes are present.
 - Run validation including \`${input.checkCommand}\` before creating any PR.
-- Push only the Worker branch \`${input.branch}\` without force-push, create a reviewable PR linked to Issue #${input.issueNumber}, and add \`${input.reviewLabel}\`.
-- Do not close the issue or merge the PR.
+- Push only the Worker branch \`${input.branch}\` without force-push, create a reviewable PR whose body includes \`Closes #${input.issueNumber}\`, and add \`${input.reviewLabel}\`.
+- Do not manually close the issue with GitHub commands, and do not merge the PR.
 
 After a \`blocked\` promise:
 - Use the promise reason/summary to report the blocker.
