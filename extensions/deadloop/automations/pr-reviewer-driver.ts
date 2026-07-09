@@ -66,23 +66,23 @@ function loadFixture(file: string | undefined): JsonObject | null {
 
 function envConfig() {
   return {
-    projectId: process.env.PI_LOOPER_PROJECT_ID || "project",
-    repoPath: process.env.PI_LOOPER_REPO_PATH || ".",
-    githubRepo: process.env.PI_LOOPER_GITHUB_REPO || "",
-    baseBranch: process.env.PI_LOOPER_BASE_BRANCH || "origin/main",
+    projectId: process.env.DEADLOOP_PROJECT_ID || "project",
+    repoPath: process.env.DEADLOOP_REPO_PATH || ".",
+    githubRepo: process.env.DEADLOOP_GITHUB_REPO || "",
+    baseBranch: process.env.DEADLOOP_BASE_BRANCH || "origin/main",
     automationDir: SCRIPT_DIR,
-    checkCommand: process.env.PI_LOOPER_CHECK_COMMAND || "git diff --check",
-    reviewerAgent: process.env.PI_LOOPER_REVIEWER_AGENT || "pi",
-    reviewerModel: process.env.PI_LOOPER_REVIEWER_MODEL || "",
-    reviewLabel: process.env.PI_LOOPER_REVIEW_LABEL || "agent:review",
-    reviewingLabel: process.env.PI_LOOPER_REVIEWING_LABEL || "agent:reviewing",
-    humanLabel: process.env.PI_LOOPER_HUMAN_LABEL || "ready-for-human",
-    blockedLabel: process.env.PI_LOOPER_BLOCKED_LABEL || "agent:blocked",
-    implementLabel: process.env.PI_LOOPER_IMPLEMENT_LABEL || "agent:implement",
-    autoMerge: parseBool(process.env.PI_LOOPER_AUTO_MERGE),
-    externalReviewWaitSeconds: process.env.PI_LOOPER_EXTERNAL_REVIEW_WAIT_SECONDS || "1800",
-    now: process.env.PI_LOOPER_NOW || "",
-    simulateLaunch: process.env.PI_LOOPER_SIMULATE_LAUNCH === "1",
+    checkCommand: process.env.DEADLOOP_CHECK_COMMAND || "git diff --check",
+    reviewerAgent: process.env.DEADLOOP_REVIEWER_AGENT || "pi",
+    reviewerModel: process.env.DEADLOOP_REVIEWER_MODEL || "",
+    reviewLabel: process.env.DEADLOOP_REVIEW_LABEL || "agent:review",
+    reviewingLabel: process.env.DEADLOOP_REVIEWING_LABEL || "agent:reviewing",
+    humanLabel: process.env.DEADLOOP_HUMAN_LABEL || "ready-for-human",
+    blockedLabel: process.env.DEADLOOP_BLOCKED_LABEL || "agent:blocked",
+    implementLabel: process.env.DEADLOOP_IMPLEMENT_LABEL || "agent:implement",
+    autoMerge: parseBool(process.env.DEADLOOP_AUTO_MERGE),
+    externalReviewWaitSeconds: process.env.DEADLOOP_EXTERNAL_REVIEW_WAIT_SECONDS || "1800",
+    now: process.env.DEADLOOP_NOW || "",
+    simulateLaunch: process.env.DEADLOOP_SIMULATE_LAUNCH === "1",
   };
 }
 
@@ -113,11 +113,11 @@ function liveAgents(): any {
 function decisionConfig(env: ReturnType<typeof envConfig>): JsonObject {
   const externalReviewWaitSeconds = Number(env.externalReviewWaitSeconds || 1800);
   if (!Number.isFinite(externalReviewWaitSeconds) || externalReviewWaitSeconds < 0) {
-    throw new Error("PI_LOOPER_EXTERNAL_REVIEW_WAIT_SECONDS must be a non-negative number");
+    throw new Error("DEADLOOP_EXTERNAL_REVIEW_WAIT_SECONDS must be a non-negative number");
   }
-  if (env.now && !/^\d{4}-\d{2}-\d{2}T/.test(env.now)) throw new Error("PI_LOOPER_NOW must be an ISO-8601 timestamp");
+  if (env.now && !/^\d{4}-\d{2}-\d{2}T/.test(env.now)) throw new Error("DEADLOOP_NOW must be an ISO-8601 timestamp");
   const now = env.now ? new Date(env.now) : new Date();
-  if (Number.isNaN(now.getTime())) throw new Error("PI_LOOPER_NOW must be an ISO-8601 timestamp");
+  if (Number.isNaN(now.getTime())) throw new Error("DEADLOOP_NOW must be an ISO-8601 timestamp");
   return defaultDecisionConfig({
     reviewLabel: env.reviewLabel,
     reviewingLabel: env.reviewingLabel,
@@ -229,8 +229,8 @@ function launchPrReviewer(pr: JsonObject, env: ReturnType<typeof envConfig>, fix
       workspaceId: "fixture-workspace",
       tabId: "fixture-tab",
       worktreePath: simulatedWorktreePath,
-      promptFile: `${simulatedWorktreePath}/.pi-looper/reviewer-prompt-${uuid}.md`,
-      promiseFile: `${simulatedWorktreePath}/.pi-looper/promise-${uuid}.json`,
+      promptFile: `${simulatedWorktreePath}/.deadloop/reviewer-prompt-${uuid}.md`,
+      promiseFile: `${simulatedWorktreePath}/.deadloop/promise-${uuid}.json`,
       simulated: true,
     };
   }
@@ -256,7 +256,7 @@ function launchPrReviewer(pr: JsonObject, env: ReturnType<typeof envConfig>, fix
   const tabId = findStringValue(tabResult, ["tab_id", "tabId", "id"]);
   if (!tabId) throw new Error("herdr tab create did not return tab id");
 
-  const stateDir = path.join(worktreePath, ".pi-looper");
+  const stateDir = path.join(worktreePath, ".deadloop");
   fs.mkdirSync(stateDir, { recursive: true });
   const promptFile = path.join(stateDir, `reviewer-prompt-${uuid}.md`);
   const promiseFile = path.join(stateDir, `promise-${uuid}.json`);
@@ -347,7 +347,7 @@ function applyExternalReviewRequest(pr: JsonObject, env: ReturnType<typeof envCo
     "-R",
     env.githubRepo,
     "--body",
-    `@coderabbitai review\n\n<!-- pi-looper:external-review-request head=${head} -->`,
+    `@coderabbitai review\n\n<!-- deadloop:external-review-request head=${head} -->`,
   ]);
   runText(["gh", "pr", "edit", number, "-R", env.githubRepo, "--remove-label", env.reviewingLabel], { check: false });
 }
@@ -380,7 +380,7 @@ Report only the resulting action and evidence.`;
 function drive(fixturePath: string | undefined): DriverResult {
   const fixture = loadFixture(fixturePath);
   const env = envConfig();
-  if (!env.githubRepo && !fixture) return driverResult("error", "PI_LOOPER_GITHUB_REPO is required", { driverAction: "configuration_error" });
+  if (!env.githubRepo && !fixture) return driverResult("error", "DEADLOOP_GITHUB_REPO is required", { driverAction: "configuration_error" });
 
   const prs = fixture ? fixture.prs || [] : livePrs(env.githubRepo);
   const agents = fixture ? fixture.agents || { result: { agents: [] } } : liveAgents();

@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 
 import { describe, expect, it } from "vitest";
 
-const decisionScript = "extensions/pi-looper/automations/issue-coordinator-decisions.ts";
+const decisionScript = "extensions/deadloop/automations/issue-coordinator-decisions.ts";
 
 function runDecision(args: string[]) {
   return spawnSync("node", [decisionScript, ...args], { cwd: process.cwd(), encoding: "utf8" });

@@ -15,8 +15,8 @@
   "include": [
     "src/**/*.ts",
     "src/**/*.cjs",
-    "extensions/pi-looper/index.ts",
-    "extensions/pi-looper/automations/*.ts",
+    "extensions/deadloop/index.ts",
+    "extensions/deadloop/automations/*.ts",
     "test/**/*.ts"
   ],
   "exclude": ["node_modules", ".pi-subagents"]

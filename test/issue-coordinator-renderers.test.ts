@@ -14,13 +14,13 @@ const blockedInput = {
   summary: "Worker 起動に失敗しました。",
   confirmed: ["workspace trust が未承認です。"],
   nextDecision: "operator が trust を受け入れる必要があります。",
-  promiseFile: "/tmp/worktree/.pi-looper/promise weird.json",
+  promiseFile: "/tmp/worktree/.deadloop/promise weird.json",
   workspaceId: "workspace-1",
   worktreePath: "/tmp/work tree",
   branch: "agent/issue-72-renderers",
 };
 
-const issueCoordinatorPrompt = readFileSync("extensions/pi-looper/automations/issue-coordinator.prompt.md", "utf8");
+const issueCoordinatorPrompt = readFileSync("extensions/deadloop/automations/issue-coordinator.prompt.md", "utf8");
 
 const workerInput = {
   launchReason: "medium: 通常の実装です。",
@@ -30,7 +30,7 @@ const workerInput = {
   githubRepo: "owner/repo",
   workerInstructions: "AGENTS.md を読む。```危険な fence``` を貼らない。",
   checkCommand: "npm test && echo ```not a fence```",
-  promiseFile: "/tmp/worktree/.pi-looper/promise-123.json",
+  promiseFile: "/tmp/worktree/.deadloop/promise-123.json",
 };
 
 describe("issue coordinator renderers", () => {

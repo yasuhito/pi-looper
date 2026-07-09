@@ -21,10 +21,10 @@ describe("agent launch profiles", () => {
         agent: "pi",
         name: "demo-issue-1-worker",
         level: "medium",
-        promptFile: "/wt/.pi-looper/prompt.md",
+        promptFile: "/wt/.deadloop/prompt.md",
         promptText: "unused",
       }),
-    ).toEqual(["pi", "--name", "demo-issue-1-worker", "--thinking", "medium", "@/wt/.pi-looper/prompt.md"]);
+    ).toEqual(["pi", "--name", "demo-issue-1-worker", "--thinking", "medium", "@/wt/.deadloop/prompt.md"]);
   });
 
   it("builds the claude argv with a positional prompt payload", () => {
@@ -34,7 +34,7 @@ describe("agent launch profiles", () => {
         name: "demo-issue-1-worker",
         level: "high",
         uuid: "11111111-1111-1111-1111-111111111111",
-        promptFile: "/wt/.pi-looper/prompt.md",
+        promptFile: "/wt/.deadloop/prompt.md",
         promptText: "実装してください",
       }),
     ).toEqual([

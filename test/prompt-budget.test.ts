@@ -3,7 +3,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-const automationDir = path.join(process.cwd(), "extensions/pi-looper/automations");
+const automationDir = path.join(process.cwd(), "extensions/deadloop/automations");
 
 type PromptBudget = {
   file: string;

@@ -21,7 +21,7 @@ describe("package manifest files", () => {
 
   it("defines a local lint command", () => {
     expect(packageJson.scripts.lint).toBe(
-      "biome check package.json biome.json test/ci-workflow.test.ts test/package-manifest.test.ts tsconfig.json --files-ignore-unknown=true && biome lint src extensions/pi-looper/index.ts extensions/pi-looper/automations/*.ts test/*.ts --files-ignore-unknown=true",
+      "biome check package.json biome.json test/ci-workflow.test.ts test/package-manifest.test.ts tsconfig.json --files-ignore-unknown=true && biome lint src extensions/deadloop/index.ts extensions/deadloop/automations/*.ts test/*.ts --files-ignore-unknown=true",
     );
   });
 
@@ -42,10 +42,10 @@ describe("package manifest files", () => {
   });
 
   it("includes the example project config", () => {
-    expect(packageJson.files).toContain("extensions/pi-looper/projects.example.json");
+    expect(packageJson.files).toContain("extensions/deadloop/projects.example.json");
   });
 
   it("does not include package-local project config", () => {
-    expect(packageJson.files).not.toContain("extensions/pi-looper/projects.json");
+    expect(packageJson.files).not.toContain("extensions/deadloop/projects.json");
   });
 });

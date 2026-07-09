@@ -1,6 +1,6 @@
 ---
 name: deadloop
-description: Install and operate deadloop, a Pi package/extension that loops GitHub issues through implementation, PR review, verification, and optional merge using Herdr-managed agents. Use when a user asks to install deadloop, configure issue/PR automation, or understand the npx skills add compatibility path.
+description: Install and operate deadloop, a Pi package/extension that loops GitHub issues through implementation, PR review, verification, and optional merge using Herdr-managed agents. Use when a user asks to install deadloop, configure issue/PR automation, or understand the npx skills setup path.
 ---
 
 # deadloop
@@ -39,7 +39,7 @@ pi install /absolute/path/to/deadloop
 
    ```bash
    mkdir -p ~/.pi/agent/deadloop
-   cp ~/.pi/agent/git/github.com/yasuhito/deadloop/extensions/pi-looper/projects.example.json ~/.pi/agent/deadloop/projects.json
+   cp ~/.pi/agent/git/github.com/yasuhito/deadloop/extensions/deadloop/projects.example.json ~/.pi/agent/deadloop/projects.json
    $EDITOR ~/.pi/agent/deadloop/projects.json
    ```
 
@@ -62,5 +62,5 @@ pi install /absolute/path/to/deadloop
 
 - deadloop writes GitHub comments and labels.
 - The extension and its automations run with local user permissions.
-- Do not commit `extensions/pi-looper/projects.json`, `~/.pi/agent/deadloop/projects.json`, or legacy `~/.pi/agent/pi-looper/projects.json`.
+- Do not commit `extensions/deadloop/projects.json` or `~/.pi/agent/deadloop/projects.json`.
 - Review the package source before installing it in a repository with write access.

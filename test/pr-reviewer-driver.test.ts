@@ -3,7 +3,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-const driverScript = "extensions/pi-looper/automations/pr-reviewer-driver.ts";
+const driverScript = "extensions/deadloop/automations/pr-reviewer-driver.ts";
 
 function runDriverFixture(fixtureName: string, extraEnv: Record<string, string> = {}) {
   const result = spawnSync("node", [driverScript, "--fixture", path.join("test/fixtures/pr-reviewer-driver", fixtureName)], {
@@ -11,13 +11,13 @@ function runDriverFixture(fixtureName: string, extraEnv: Record<string, string> 
     encoding: "utf8",
     env: {
       ...process.env,
-      PI_LOOPER_PROJECT_ID: "demo",
-      PI_LOOPER_REPO_PATH: "/repo",
-      PI_LOOPER_GITHUB_REPO: "owner/repo",
-      PI_LOOPER_REVIEWER_AGENT: "pi",
-      PI_LOOPER_REVIEWER_MODEL: "",
-      PI_LOOPER_AUTO_MERGE: "0",
-      PI_LOOPER_NOW: "2026-07-08T00:00:00Z",
+      DEADLOOP_PROJECT_ID: "demo",
+      DEADLOOP_REPO_PATH: "/repo",
+      DEADLOOP_GITHUB_REPO: "owner/repo",
+      DEADLOOP_REVIEWER_AGENT: "pi",
+      DEADLOOP_REVIEWER_MODEL: "",
+      DEADLOOP_AUTO_MERGE: "0",
+      DEADLOOP_NOW: "2026-07-08T00:00:00Z",
       ...extraEnv,
     },
   });
@@ -53,19 +53,19 @@ describe("PR reviewer deterministic driver", () => {
   });
 
   it("can launch reviewers deterministically before asking for monitoring", () => {
-    expect(runDriverFixture("fallback-review.json", { PI_LOOPER_SIMULATE_LAUNCH: "1" }).driverAction).toBe(
+    expect(runDriverFixture("fallback-review.json", { DEADLOOP_SIMULATE_LAUNCH: "1" }).driverAction).toBe(
       "reviewer_monitor_request",
     );
   });
 
   it("reports the deterministic reviewer promise path", () => {
-    expect(runDriverFixture("fallback-review.json", { PI_LOOPER_SIMULATE_LAUNCH: "1" }).launch.promiseFile).toContain(
-      ".pi-looper/promise-",
+    expect(runDriverFixture("fallback-review.json", { DEADLOOP_SIMULATE_LAUNCH: "1" }).launch.promiseFile).toContain(
+      ".deadloop/promise-",
     );
   });
 
   it("preserves autoMerge=false safety after deterministic reviewer launch", () => {
-    expect(runDriverFixture("fallback-review.json", { PI_LOOPER_SIMULATE_LAUNCH: "1" }).prompt).toContain(
+    expect(runDriverFixture("fallback-review.json", { DEADLOOP_SIMULATE_LAUNCH: "1" }).prompt).toContain(
       "If autoMerge=false, never merge",
     );
   });

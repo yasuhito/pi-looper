@@ -5,7 +5,7 @@ import { spawnSync } from "node:child_process";
 
 import { describe, expect, it } from "vitest";
 
-const decisionScript = "extensions/pi-looper/automations/worker-watch-decision.ts";
+const decisionScript = "extensions/deadloop/automations/worker-watch-decision.ts";
 
 type WatchDecision = {
   action: string;
@@ -20,7 +20,7 @@ function runDecisionArgs(args: string[]) {
 }
 
 function runDecision(input: Record<string, unknown>): WatchDecision {
-  const tempRoot = mkdtempSync(path.join(tmpdir(), "pi-looper-worker-watch-"));
+  const tempRoot = mkdtempSync(path.join(tmpdir(), "deadloop-worker-watch-"));
   try {
     const inputPath = path.join(tempRoot, "input.json");
     writeFileSync(inputPath, JSON.stringify(input));

@@ -5,7 +5,6 @@ import { AGENT_KINDS, type AgentKind, isAgentKind } from "./agent-profiles.cjs";
 export const DEFAULT_TIMEZONE = "Asia/Tokyo";
 
 export const REPO_POLICY_FILE = "deadloop.project.json";
-export const LEGACY_REPO_POLICY_FILE = "pi-looper.project.json";
 
 export const DEFAULT_WORKER_INSTRUCTIONS = "AGENTS.md、CONTEXT.md、関連 docs/adr/ を読んでから作業する。";
 
@@ -148,7 +147,6 @@ export const EXTENSION_CODE_CHANGED_WARNING = "⚠ extension code changed since 
 export type ConfigPathOptions = {
   env?: Record<string, string | undefined>;
   stateDir: string;
-  legacyStateDir?: string;
   extensionDir: string;
   exists?: (path: string) => boolean;
   joinPath?: (...parts: string[]) => string;
@@ -168,40 +166,17 @@ export type CodeSourceMtime = {
 export function resolveConfigPath(options: ConfigPathOptions): string {
   const env = options.env || {};
   if (env.DEADLOOP_CONFIG) return env.DEADLOOP_CONFIG;
-  if (env.PI_LOOPER_CONFIG) return env.PI_LOOPER_CONFIG;
 
   const joinPath = options.joinPath || ((...parts: string[]) => parts.join("/"));
   const userConfigPath = joinPath(options.stateDir, "projects.json");
   if (options.exists?.(userConfigPath)) return userConfigPath;
 
-  if (options.legacyStateDir) {
-    const legacyUserConfigPath = joinPath(options.legacyStateDir, "projects.json");
-    if (options.exists?.(legacyUserConfigPath)) return legacyUserConfigPath;
-  }
-
   return joinPath(options.extensionDir, "projects.json");
 }
-
-// Bundled automation files were shortened in #46 (e.g. dropping the "generic-"
-// prefix). Existing operator projects.json files still point at the old names,
-// so we alias every legacy name back to its current short name. Built from the
-// prefix + current name so the retired stems never appear as literals here.
-const LEGACY_AUTOMATION_PREFIX = ["generic", ""].join("-");
-const ALIASED_AUTOMATION_FILES = [
-  "issue-coordinator.prompt.md",
-  "issue-coordinator.precheck.sh",
-  "pr-reviewer.prompt.md",
-  "pr-reviewer.precheck.sh",
-];
-
-export const AUTOMATION_FILE_ALIASES: Record<string, string> = Object.fromEntries(
-  ALIASED_AUTOMATION_FILES.map((current) => [`${LEGACY_AUTOMATION_PREFIX}${current}`, current]),
-);
 
 export type AutomationFileResolution = {
   requested: string;
   resolved: string;
-  aliased: boolean;
   found: boolean;
 };
 
@@ -210,10 +185,7 @@ export function resolveAutomationFile(
   exists: (fileName: string) => boolean,
 ): AutomationFileResolution {
   const name = requested || "";
-  const aliasTarget = AUTOMATION_FILE_ALIASES[name];
-  const aliased = aliasTarget !== undefined;
-  const resolved = aliased ? aliasTarget : name;
-  return { requested: name, resolved, aliased, found: name !== "" && exists(resolved) };
+  return { requested: name, resolved: name, found: name !== "" && exists(name) };
 }
 
 export function sanitizeId(value: unknown): string {

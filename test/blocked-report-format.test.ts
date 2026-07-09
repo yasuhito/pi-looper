@@ -13,7 +13,7 @@ const issueBlockedComment = renderIssueBlockedComment({
   implementLabel: "agent:implement",
   summary: "blocked",
 });
-const prReviewerPrompt = readFileSync("extensions/pi-looper/automations/pr-reviewer.prompt.md", "utf8");
+const prReviewerPrompt = readFileSync("extensions/deadloop/automations/pr-reviewer.prompt.md", "utf8");
 
 describe("blocked report format prompts", () => {
   it("requires the issue coordinator blocked report recovery section", () => {

@@ -4,14 +4,14 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-const automationDir = path.join(process.cwd(), "extensions/pi-looper/automations");
+const automationDir = path.join(process.cwd(), "extensions/deadloop/automations");
 const driverScript = path.join(automationDir, "issue-coordinator-driver.ts");
 
 function issueCoordinatorWorkerPrompt(): string {
   const result = spawnSync("node", [driverScript, "--fixture", "test/fixtures/issue-coordinator/driver-ready-worker.json"], {
     cwd: process.cwd(),
     encoding: "utf8",
-    env: { ...process.env, PI_LOOPER_PROJECT_ID: "demo", PI_LOOPER_REPO_PATH: "/repo", PI_LOOPER_GITHUB_REPO: "owner/repo" },
+    env: { ...process.env, DEADLOOP_PROJECT_ID: "demo", DEADLOOP_REPO_PATH: "/repo", DEADLOOP_GITHUB_REPO: "owner/repo" },
   });
   if (result.status !== 0) throw new Error(result.stderr || result.stdout);
   return JSON.parse(result.stdout).prompt;

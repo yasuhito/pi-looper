@@ -245,8 +245,8 @@ function launchIssueWorker(issue: JsonObject, env: ReturnType<typeof envConfig>,
       workspaceId: "fixture-workspace",
       tabId: "fixture-tab",
       worktreePath: simulatedWorktreePath,
-      promptFile: `${simulatedWorktreePath}/.pi-looper/worker-prompt-${uuid}.md`,
-      promiseFile: `${simulatedWorktreePath}/.pi-looper/promise-${uuid}.json`,
+      promptFile: `${simulatedWorktreePath}/.deadloop/worker-prompt-${uuid}.md`,
+      promiseFile: `${simulatedWorktreePath}/.deadloop/promise-${uuid}.json`,
       simulated: true,
     };
   }
@@ -274,7 +274,7 @@ function launchIssueWorker(issue: JsonObject, env: ReturnType<typeof envConfig>,
   const tabId = findStringValue(tabResult, ["tab_id", "tabId", "id"]);
   if (!tabId) throw new Error("herdr tab create did not return tab id");
 
-  const stateDir = path.join(worktreePath, ".pi-looper");
+  const stateDir = path.join(worktreePath, ".deadloop");
   fs.mkdirSync(stateDir, { recursive: true });
   const promptFile = path.join(stateDir, `worker-prompt-${uuid}.md`);
   const promiseFile = path.join(stateDir, `promise-${uuid}.json`);
@@ -333,7 +333,7 @@ Required safety contract:
 - Claim before launch: remove \`${env.implementLabel}\` and add \`${env.inProgressLabel}\`.
 - Use a unique Worker name like \`${workerName}\`; never use the default \`pi\` name.
 - Create a Herdr worktree and then a dedicated tab with \`herdr tab create --workspace <workspaceId> --cwd <worktreePath> --label "${workerName}" --no-focus\`.
-- Render the Worker prompt with \`src/issue-coordinator-renderers.ts\` / \`renderIssueWorkerPrompt\` semantics, including promise file \`<worktreePath>/.pi-looper/promise-<uuid>.json\`.
+- Render the Worker prompt with \`src/issue-coordinator-renderers.ts\` / \`renderIssueWorkerPrompt\` semantics, including promise file \`<worktreePath>/.deadloop/promise-<uuid>.json\`.
 - Start the Worker only through \`node ${env.automationDir}/launch-agent.ts --agent "${env.workerAgent}" --name "$worker_name" --cwd "$worktree_path" --repo-path ${shellQuoteForDriver(env.repoPath)} --level "$level" --model "${env.workerModel}" --uuid "$uuid" --prompt-file "$prompt_file" --tab "$tab_id"\`.
 - The promise file is the only completion authority. When \`complete\` or \`blocked\` appears, break polling immediately (\`complete|blocked) break\`). Do not use Herdr status as completion authority.
 - After a complete promise, run validation including \`${env.checkCommand}\`, create a reviewable PR, add \`${env.reviewLabel}\`, and preserve existing safety rules.
@@ -343,32 +343,32 @@ Report only the resulting action and evidence.`;
 
 function envConfig() {
   return {
-    projectId: process.env.PI_LOOPER_PROJECT_ID || "project",
-    repoPath: process.env.PI_LOOPER_REPO_PATH || ".",
-    githubRepo: process.env.PI_LOOPER_GITHUB_REPO || "",
-    baseBranch: process.env.PI_LOOPER_BASE_BRANCH || "origin/main",
+    projectId: process.env.DEADLOOP_PROJECT_ID || "project",
+    repoPath: process.env.DEADLOOP_REPO_PATH || ".",
+    githubRepo: process.env.DEADLOOP_GITHUB_REPO || "",
+    baseBranch: process.env.DEADLOOP_BASE_BRANCH || "origin/main",
     automationDir: SCRIPT_DIR,
-    checkCommand: process.env.PI_LOOPER_CHECK_COMMAND || "git diff --check",
-    workerInstructions: process.env.PI_LOOPER_WORKER_INSTRUCTIONS || "AGENTS.md を読み、Issue の契約に従ってください。",
-    workerAgent: process.env.PI_LOOPER_WORKER_AGENT || "pi",
-    workerModel: process.env.PI_LOOPER_WORKER_MODEL || "",
-    readyLabel: process.env.PI_LOOPER_READY_LABEL || "ready-for-agent",
-    implementLabel: process.env.PI_LOOPER_IMPLEMENT_LABEL || "agent:implement",
-    inProgressLabel: process.env.PI_LOOPER_IN_PROGRESS_LABEL || "agent:in-progress",
-    blockedLabel: process.env.PI_LOOPER_BLOCKED_LABEL || "agent:blocked",
-    reviewLabel: process.env.PI_LOOPER_REVIEW_LABEL || "agent:review",
-    humanLabel: process.env.PI_LOOPER_HUMAN_LABEL || "ready-for-human",
-    needsInfoLabel: process.env.PI_LOOPER_NEEDS_INFO_LABEL || "needs-info",
-    wontfixLabel: process.env.PI_LOOPER_WONTFIX_LABEL || "wontfix",
-    needsTriageLabel: process.env.PI_LOOPER_NEEDS_TRIAGE_LABEL || "needs-triage",
-    simulateLaunch: process.env.PI_LOOPER_SIMULATE_LAUNCH === "1",
+    checkCommand: process.env.DEADLOOP_CHECK_COMMAND || "git diff --check",
+    workerInstructions: process.env.DEADLOOP_WORKER_INSTRUCTIONS || "AGENTS.md を読み、Issue の契約に従ってください。",
+    workerAgent: process.env.DEADLOOP_WORKER_AGENT || "pi",
+    workerModel: process.env.DEADLOOP_WORKER_MODEL || "",
+    readyLabel: process.env.DEADLOOP_READY_LABEL || "ready-for-agent",
+    implementLabel: process.env.DEADLOOP_IMPLEMENT_LABEL || "agent:implement",
+    inProgressLabel: process.env.DEADLOOP_IN_PROGRESS_LABEL || "agent:in-progress",
+    blockedLabel: process.env.DEADLOOP_BLOCKED_LABEL || "agent:blocked",
+    reviewLabel: process.env.DEADLOOP_REVIEW_LABEL || "agent:review",
+    humanLabel: process.env.DEADLOOP_HUMAN_LABEL || "ready-for-human",
+    needsInfoLabel: process.env.DEADLOOP_NEEDS_INFO_LABEL || "needs-info",
+    wontfixLabel: process.env.DEADLOOP_WONTFIX_LABEL || "wontfix",
+    needsTriageLabel: process.env.DEADLOOP_NEEDS_TRIAGE_LABEL || "needs-triage",
+    simulateLaunch: process.env.DEADLOOP_SIMULATE_LAUNCH === "1",
   };
 }
 
 function drive(fixturePath: string | undefined): DriverResult {
   const fixture = loadFixture(fixturePath);
   const env = envConfig();
-  if (!env.githubRepo && !fixture) return driverResult("error", "PI_LOOPER_GITHUB_REPO is required", { driverAction: "configuration_error" });
+  if (!env.githubRepo && !fixture) return driverResult("error", "DEADLOOP_GITHUB_REPO is required", { driverAction: "configuration_error" });
 
   const plan = cleanupPlan(fixture);
   const candidates = plan.candidates || [];

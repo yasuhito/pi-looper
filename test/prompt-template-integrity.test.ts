@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { normalizeProject, templateValues } from "../src/core";
 
-const automationDir = path.join(process.cwd(), "extensions/pi-looper/automations");
+const automationDir = path.join(process.cwd(), "extensions/deadloop/automations");
 const placeholderPattern = /\{\{\s*([\w.-]+)\s*\}\}/g;
 
 function extractPlaceholders(template: string): string[] {

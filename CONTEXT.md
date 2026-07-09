@@ -1,12 +1,12 @@
-# pi-looper
+# deadloop
 
 GitHub Issue から実装・PR 作成・レビュー・マージまでを Pi 上で自動で回すループエンジニアリングツール。このファイルはプロジェクトの用語集であり、実装の詳細は含めない。
 
 ## Language
 
 **オーケストレータ (Orchestrator)**:
-pi-looper 拡張を読み込んで動く常駐 Pi セッション。automation を定期実行し、Worker やレビューエージェントを起動・監視する。
-_Avoid_: オーケストレーター(表記ゆれ。長音符なしに統一)、司令塔(旧称)、コーディネーター(automation の issue coordinator と混同するため)、ルーパー(プロダクト名 pi-looper と衝突し、ループの主体は schedule のため)、メインセッション、親エージェント
+deadloop 拡張を読み込んで動く常駐 Pi セッション。automation を定期実行し、Worker やレビューエージェントを起動・監視する。
+_Avoid_: オーケストレーター(表記ゆれ。長音符なしに統一)、司令塔(旧称)、コーディネーター(automation の issue coordinator と混同するため)、ルーパー(プロダクト名 deadloop と衝突し、ループの主体は schedule のため)、メインセッション、親エージェント
 
 **Worker (作業エージェント)**:
 Issue coordinator が Herdr worktree に起動する、単一 issue を実装する使い捨てのエージェントセッション。どの CLI で動くかはエージェント種別が決める。

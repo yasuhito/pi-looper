@@ -3,7 +3,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-const script = "extensions/pi-looper/automations/ci-fallback-decision.ts";
+const script = "extensions/deadloop/automations/ci-fallback-decision.ts";
 const fixtureDir = path.join(process.cwd(), "test/fixtures/ci-fallback");
 
 function runDecision(fixtureName: string, options: { enabled?: boolean; mode?: string } = {}) {

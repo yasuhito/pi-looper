@@ -19,26 +19,15 @@ import {
 } from "../src/core";
 
 describe("deterministic extension core", () => {
-  it("uses DEADLOOP_CONFIG before legacy config env vars", () => {
+  it("uses DEADLOOP_CONFIG before default config paths", () => {
     expect(
       resolveConfigPath({
-        env: { DEADLOOP_CONFIG: "/deadloop/projects.json", PI_LOOPER_CONFIG: "/legacy/projects.json" },
+        env: { DEADLOOP_CONFIG: "/deadloop/projects.json" },
         stateDir: "/state",
         extensionDir: "/extension",
         exists: () => true,
       }),
     ).toBe("/deadloop/projects.json");
-  });
-
-  it("keeps PI_LOOPER_CONFIG as a legacy config env var", () => {
-    expect(
-      resolveConfigPath({
-        env: { PI_LOOPER_CONFIG: "/explicit/projects.json" },
-        stateDir: "/state",
-        extensionDir: "/extension",
-        exists: () => true,
-      }),
-    ).toBe("/explicit/projects.json");
   });
 
   it("uses the deadloop user state config before package-local config", () => {
@@ -50,18 +39,6 @@ describe("deterministic extension core", () => {
         exists: (value) => value === "/state/projects.json",
       }),
     ).toBe("/state/projects.json");
-  });
-
-  it("falls back to the legacy pi-looper user state config", () => {
-    expect(
-      resolveConfigPath({
-        env: {},
-        stateDir: "/state",
-        legacyStateDir: "/legacy-state",
-        extensionDir: "/extension",
-        exists: (value) => value === "/legacy-state/projects.json",
-      }),
-    ).toBe("/legacy-state/projects.json");
   });
 
   it("falls back to package-local config when user state config is missing", () => {
@@ -425,7 +402,7 @@ describe("deterministic extension core", () => {
   });
 
   it("warns when extension source mtime is newer than module load time", () => {
-    expect(codeFreshnessWarning(1000, [{ path: "extensions/pi-looper/index.ts", mtimeMs: 1001 }])).toBe(
+    expect(codeFreshnessWarning(1000, [{ path: "extensions/deadloop/index.ts", mtimeMs: 1001 }])).toBe(
       EXTENSION_CODE_CHANGED_WARNING,
     );
   });

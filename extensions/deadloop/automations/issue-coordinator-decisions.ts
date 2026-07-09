@@ -273,13 +273,13 @@ function parseArgsForIssueDecision(argv: string[]): IssueDecisionRecord {
 
 function configFromIssueArgs(args: IssueDecisionRecord): IssueDecisionConfig {
   return defaultIssueDecisionConfig({
-    readyLabel: args.readyLabel || process.env.PI_LOOPER_READY_LABEL || DEFAULT_READY_LABEL,
-    implementLabel: args.implementLabel || process.env.PI_LOOPER_IMPLEMENT_LABEL || DEFAULT_IMPLEMENT_LABEL,
-    inProgressLabel: args.inProgressLabel || process.env.PI_LOOPER_IN_PROGRESS_LABEL || DEFAULT_IN_PROGRESS_LABEL,
-    blockedLabel: args.blockedLabel || process.env.PI_LOOPER_BLOCKED_LABEL || DEFAULT_BLOCKED_LABEL,
-    humanLabel: args.humanLabel || process.env.PI_LOOPER_HUMAN_LABEL || DEFAULT_HUMAN_LABEL,
-    needsInfoLabel: args.needsInfoLabel || process.env.PI_LOOPER_NEEDS_INFO_LABEL || DEFAULT_NEEDS_INFO_LABEL,
-    wontfixLabel: args.wontfixLabel || process.env.PI_LOOPER_WONTFIX_LABEL || DEFAULT_WONTFIX_LABEL,
+    readyLabel: args.readyLabel || process.env.DEADLOOP_READY_LABEL || DEFAULT_READY_LABEL,
+    implementLabel: args.implementLabel || process.env.DEADLOOP_IMPLEMENT_LABEL || DEFAULT_IMPLEMENT_LABEL,
+    inProgressLabel: args.inProgressLabel || process.env.DEADLOOP_IN_PROGRESS_LABEL || DEFAULT_IN_PROGRESS_LABEL,
+    blockedLabel: args.blockedLabel || process.env.DEADLOOP_BLOCKED_LABEL || DEFAULT_BLOCKED_LABEL,
+    humanLabel: args.humanLabel || process.env.DEADLOOP_HUMAN_LABEL || DEFAULT_HUMAN_LABEL,
+    needsInfoLabel: args.needsInfoLabel || process.env.DEADLOOP_NEEDS_INFO_LABEL || DEFAULT_NEEDS_INFO_LABEL,
+    wontfixLabel: args.wontfixLabel || process.env.DEADLOOP_WONTFIX_LABEL || DEFAULT_WONTFIX_LABEL,
   });
 }
 
@@ -294,8 +294,8 @@ function main(argv: string[] = process.argv.slice(2)): number {
   if (args.fixture) {
     decision = fixtureDecision(args.fixture, config);
   } else {
-    const repo = args.repo || process.env.PI_LOOPER_GITHUB_REPO || "";
-    if (!repo) throw new Error("--repo or PI_LOOPER_GITHUB_REPO is required");
+    const repo = args.repo || process.env.DEADLOOP_GITHUB_REPO || "";
+    if (!repo) throw new Error("--repo or DEADLOOP_GITHUB_REPO is required");
     const issues = loadIssues(args.input);
     decision = selectIssueForImplementation(
       issues,

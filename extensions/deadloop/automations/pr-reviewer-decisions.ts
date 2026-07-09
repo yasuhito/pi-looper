@@ -18,7 +18,7 @@ type ReviewDecisionConfig = {
 };
 
 const PENDING_CHECK_STATES = new Set(["QUEUED", "IN_PROGRESS", "PENDING", "EXPECTED", "WAITING"]);
-const EXTERNAL_REVIEW_MARKER_RE = /<!--\s*pi-looper:external-review-request\s+head=([0-9a-fA-F]+)\s*-->/g;
+const EXTERNAL_REVIEW_MARKER_RE = /<!--\s*deadloop:external-review-request\s+head=([0-9a-fA-F]+)\s*-->/g;
 
 function defaultDecisionConfig(overrides: Partial<ReviewDecisionConfig> = {}): ReviewDecisionConfig {
   return {

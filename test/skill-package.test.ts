@@ -8,7 +8,7 @@ const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
 };
 const skillText = readFileSync("skills/deadloop/SKILL.md", "utf8");
 
-describe("skills CLI compatibility package", () => {
+describe("skills CLI setup package", () => {
   it("declares bundled Pi skills in the package manifest", () => {
     expect(packageJson.pi?.skills).toContain("./skills");
   });

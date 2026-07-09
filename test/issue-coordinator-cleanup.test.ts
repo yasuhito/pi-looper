@@ -5,14 +5,14 @@ import { spawnSync } from "node:child_process";
 
 import { describe, expect, it } from "vitest";
 
-const cleanupScript = "extensions/pi-looper/automations/cleanup-completed-worker-worktrees.ts";
-const driverScript = "extensions/pi-looper/automations/issue-coordinator-driver.ts";
+const cleanupScript = "extensions/deadloop/automations/cleanup-completed-worker-worktrees.ts";
+const driverScript = "extensions/deadloop/automations/issue-coordinator-driver.ts";
 
 function runDriverFixture(fixtureName: string) {
   const result = spawnSync("node", [driverScript, "--fixture", path.join("test/fixtures/issue-coordinator", fixtureName)], {
     cwd: process.cwd(),
     encoding: "utf8",
-    env: { ...process.env, PI_LOOPER_PROJECT_ID: "demo", PI_LOOPER_REPO_PATH: "/repo", PI_LOOPER_GITHUB_REPO: "owner/repo" },
+    env: { ...process.env, DEADLOOP_PROJECT_ID: "demo", DEADLOOP_REPO_PATH: "/repo", DEADLOOP_GITHUB_REPO: "owner/repo" },
   });
   if (result.status !== 0) {
     throw new Error(result.stderr || result.stdout);
@@ -38,7 +38,7 @@ function writeExecutable(filePath: string, lines: string[]) {
 }
 
 function runIssuePrecheckWithCleanupCandidate(): number | null {
-  const tempRoot = mkdtempSync(path.join(tmpdir(), "pi-looper-issue-precheck-"));
+  const tempRoot = mkdtempSync(path.join(tmpdir(), "deadloop-issue-precheck-"));
   try {
     const repoPath = path.join(tempRoot, "repo");
     mkdirSync(repoPath);
@@ -80,16 +80,16 @@ function runIssuePrecheckWithCleanupCandidate(): number | null {
       "exit 2",
     ]);
 
-    const result = spawnSync("bash", ["extensions/pi-looper/automations/issue-coordinator.precheck.sh"], {
+    const result = spawnSync("bash", ["extensions/deadloop/automations/issue-coordinator.precheck.sh"], {
       cwd: process.cwd(),
       env: {
         ...process.env,
         PATH: `${tempRoot}:${process.env.PATH || ""}`,
-        PI_LOOPER_REPO_PATH: repoPath,
-        PI_LOOPER_GITHUB_REPO: "owner/repo",
-        PI_LOOPER_WORKTREE_ROOT: "/worktrees/repo",
-        PI_LOOPER_REVIEW_LABEL: "agent:review",
-        PI_LOOPER_HUMAN_LABEL: "ready-for-human",
+        DEADLOOP_REPO_PATH: repoPath,
+        DEADLOOP_GITHUB_REPO: "owner/repo",
+        DEADLOOP_WORKTREE_ROOT: "/worktrees/repo",
+        DEADLOOP_REVIEW_LABEL: "agent:review",
+        DEADLOOP_HUMAN_LABEL: "ready-for-human",
       },
       encoding: "utf8",
     });
@@ -152,19 +152,19 @@ describe("issue coordinator cleanup", () => {
   });
 
   it("creates a dedicated tab before starting a review worker", () => {
-    expect(readFileSync("extensions/pi-looper/automations/pr-reviewer.prompt.md", "utf8")).toContain(
+    expect(readFileSync("extensions/deadloop/automations/pr-reviewer.prompt.md", "utf8")).toContain(
       'herdr tab create --workspace <workspaceId> --cwd <worktreePath> --label "$reviewer_name" --no-focus',
     );
   });
 
   it("forwards the dedicated tab to the launcher for review agents", () => {
-    expect(readFileSync("extensions/pi-looper/automations/pr-reviewer.prompt.md", "utf8")).toContain(
+    expect(readFileSync("extensions/deadloop/automations/pr-reviewer.prompt.md", "utf8")).toContain(
       '--tab "$tab_id"',
     );
   });
 
   it("does not document workspace split startup for review workers", () => {
-    expect(readFileSync("extensions/pi-looper/automations/pr-reviewer.prompt.md", "utf8")).not.toMatch(
+    expect(readFileSync("extensions/deadloop/automations/pr-reviewer.prompt.md", "utf8")).not.toMatch(
       /herdr agent start[^`\n]*--workspace <workspaceId>/,
     );
   });
@@ -182,7 +182,7 @@ describe("issue coordinator cleanup", () => {
   });
 
   it("documents dedicated tab startup for branch update workers", () => {
-    expect(readFileSync("extensions/pi-looper/automations/pr-reviewer.prompt.md", "utf8")).toContain(
+    expect(readFileSync("extensions/deadloop/automations/pr-reviewer.prompt.md", "utf8")).toContain(
       "branch update worker を起動する場合も、worker 名と同じ label の専用タブを作ってから `herdr agent start ... --tab <tabId> --no-focus`",
     );
   });

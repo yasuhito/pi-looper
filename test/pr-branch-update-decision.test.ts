@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 
 import { describe, expect, it } from "vitest";
 
-const decisionScript = "extensions/pi-looper/automations/pr-branch-update-decision.ts";
+const decisionScript = "extensions/deadloop/automations/pr-branch-update-decision.ts";
 
 function runDecisionFixture(fixtureName: string) {
   const result = spawnSync(

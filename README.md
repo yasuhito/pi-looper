@@ -6,7 +6,7 @@
 
 - v0 is a Pi package / extension.
 - The default runner is [Herdr](https://herdr.dev/).
-- The public name is now **deadloop**. The old `pi-looper` identifiers remain as compatibility aliases where removing them would break existing operators.
+- The public name, package name, commands, config paths, and environment variables are **deadloop**.
 
 See [docs/migration-to-deadloop.md](docs/migration-to-deadloop.md) for the rename boundary.
 
@@ -46,17 +46,17 @@ Copy the example configuration and edit it for the target repository:
 
 ```bash
 mkdir -p ~/.pi/agent/deadloop
-cp ~/.pi/agent/git/github.com/yasuhito/deadloop/extensions/pi-looper/projects.example.json ~/.pi/agent/deadloop/projects.json
+cp ~/.pi/agent/git/github.com/yasuhito/deadloop/extensions/deadloop/projects.example.json ~/.pi/agent/deadloop/projects.json
 $EDITOR ~/.pi/agent/deadloop/projects.json
 ```
 
 For a local checkout, copy from:
 
 ```text
-/absolute/path/to/deadloop/extensions/pi-looper/projects.example.json
+/absolute/path/to/deadloop/extensions/deadloop/projects.example.json
 ```
 
-`projects.json` is local configuration. Do not commit it. The legacy path `~/.pi/agent/pi-looper/projects.json` is still read as a fallback.
+`projects.json` is local configuration. Do not commit it.
 
 Minimum project fields:
 
@@ -69,7 +69,7 @@ Minimum project fields:
 - `labels` — GitHub labels used to coordinate issue and PR state.
 - `automations` — scheduled issue coordinator / PR reviewer entries.
 
-Optional shared repository policy may live in `deadloop.project.json` on the trusted base branch. The old `pi-looper.project.json` file name remains a fallback. Local `projects.json` values win over repo policy.
+Optional shared repository policy may live in `deadloop.project.json` on the trusted base branch. Local `projects.json` values win over repo policy.
 
 ## Create labels
 
@@ -111,13 +111,6 @@ Useful commands:
 /deadloop-doctor
 ```
 
-Compatibility aliases still work:
-
-```text
-/pi-looper-status
-/pi-looper-doctor
-```
-
 Operator environment variables:
 
 ```bash
@@ -127,8 +120,6 @@ DEADLOOP=off pi
 DEADLOOP_AUTOMATIONS=off pi
 DEADLOOP_DEBUG=1 pi
 ```
-
-Legacy `PI_LOOPER_*` variables remain supported.
 
 ## Documentation
 
@@ -144,6 +135,6 @@ Legacy `PI_LOOPER_*` variables remain supported.
 npm test
 npm run lint
 npm run typecheck
-bash -n extensions/pi-looper/automations/*.sh
+bash -n extensions/deadloop/automations/*.sh
 npm pack --dry-run
 ```

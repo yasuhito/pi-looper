@@ -1,32 +1,32 @@
-# Migration to deadloop
+# Rename to deadloop
 
-`pi-looper` is being renamed to **deadloop**.
+`deadloop` is the only supported public name for this package.
 
-The rename is intentionally staged. The public product name, package name, GitHub repository name, install commands, and user-facing commands move to `deadloop`, while existing Pi automation internals keep compatibility aliases so current operators are not forced to migrate everything at once.
+The rename is a breaking cleanup: old `pi-looper` package names, config paths, environment variables, command names, repo-policy filenames, extension directories, and worker state directories are not kept as compatibility aliases.
 
-## What changes now
+## Supported names
 
-Use these names for new installs and user-facing documentation:
+Install:
 
 ```bash
 pi install git:github.com/yasuhito/deadloop
 npx skills@latest add yasuhito/deadloop
 ```
 
-Preferred local config path:
+Local config path:
 
 ```text
 ~/.pi/agent/deadloop/projects.json
 ```
 
-Preferred Pi commands:
+Pi commands:
 
 ```text
 /deadloop-status
 /deadloop-doctor
 ```
 
-Preferred environment variables for operator entry points:
+Operator environment variables:
 
 ```bash
 DEADLOOP_CONFIG=/path/to/projects.json pi
@@ -36,43 +36,37 @@ DEADLOOP_AUTOMATIONS=off pi
 DEADLOOP_DEBUG=1 pi
 ```
 
-## Compatibility kept intentionally
+Trusted repository policy file:
 
-The following identifiers remain supported for existing users:
+```text
+deadloop.project.json
+```
 
-- `PI_LOOPER_CONFIG`, `PI_LOOPER_PROJECTS`, `PI_LOOPER`, `PI_LOOPER_AUTOMATIONS`, and other `PI_LOOPER_*` automation environment variables.
-- `~/.pi/agent/pi-looper/projects.json` as a fallback config path.
-- `/pi-looper-status` and `/pi-looper-doctor` as command aliases.
-- `pi-looper.project.json` as a trusted repo-policy fallback when `deadloop.project.json` is not present.
-- The package-internal extension directory `extensions/pi-looper/`.
-- Worker state directories inside worktrees such as `.pi-looper/`.
-- Existing GitHub labels such as `agent:implement`, `agent:review`, and `agent:blocked`.
+Internal worker state directory:
 
-These compatibility names are operational API. Do not remove them until a later migration issue explicitly does so.
+```text
+.deadloop/
+```
 
-## Recommended migration
+## Manual migration
 
-1. Update installation source to `git:github.com/yasuhito/deadloop`.
-2. Copy local config if you want the new default path:
+If you used an earlier checkout, move your local config manually:
 
-   ```bash
-   mkdir -p ~/.pi/agent/deadloop
-   cp ~/.pi/agent/pi-looper/projects.json ~/.pi/agent/deadloop/projects.json
-   ```
+```bash
+mkdir -p ~/.pi/agent/deadloop
+mv ~/.pi/agent/pi-looper/projects.json ~/.pi/agent/deadloop/projects.json
+```
 
-3. Rename shared repo policy when convenient:
+If your target repository has shared policy, rename it:
 
-   ```bash
-   git mv pi-looper.project.json deadloop.project.json
-   ```
+```bash
+git mv pi-looper.project.json deadloop.project.json
+```
 
-   Leaving `pi-looper.project.json` in place still works during the compatibility period.
+Update runbooks and scripts to use `/deadloop-status`, `/deadloop-doctor`, and `DEADLOOP_*` variables.
 
-4. Prefer `/deadloop-status` and `/deadloop-doctor` in runbooks. Existing `/pi-looper-*` commands still work.
+## Not changed
 
-## What is not changing in this migration
-
-- The v0 runner is still Herdr.
-- The Pi package still lives under `extensions/pi-looper/` internally.
-- Automation scripts still receive `PI_LOOPER_*` environment variables.
-- The safety model, auto-merge gates, labels, and promise-file contract are unchanged.
+- v0 still runs as a Pi package.
+- v0 still uses Herdr as the default runner.
+- The safety model, auto-merge gates, GitHub labels, and promise-file contract are unchanged.

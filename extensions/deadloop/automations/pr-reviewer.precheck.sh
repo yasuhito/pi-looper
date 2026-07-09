@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd "${PI_LOOPER_REPO_PATH:?}"
+cd "${DEADLOOP_REPO_PATH:?}"
 
-repo="${PI_LOOPER_GITHUB_REPO:?}"
-project_id="${PI_LOOPER_PROJECT_ID:-}"
-review_label="${PI_LOOPER_REVIEW_LABEL:-agent:review}"
-reviewing_label="${PI_LOOPER_REVIEWING_LABEL:-agent:reviewing}"
-human_label="${PI_LOOPER_HUMAN_LABEL:-ready-for-human}"
-blocked_label="${PI_LOOPER_BLOCKED_LABEL:-agent:blocked}"
-auto_merge="${PI_LOOPER_AUTO_MERGE:-0}"
-external_review_wait_seconds="${PI_LOOPER_EXTERNAL_REVIEW_WAIT_SECONDS:-1800}"
+repo="${DEADLOOP_GITHUB_REPO:?}"
+project_id="${DEADLOOP_PROJECT_ID:-}"
+review_label="${DEADLOOP_REVIEW_LABEL:-agent:review}"
+reviewing_label="${DEADLOOP_REVIEWING_LABEL:-agent:reviewing}"
+human_label="${DEADLOOP_HUMAN_LABEL:-ready-for-human}"
+blocked_label="${DEADLOOP_BLOCKED_LABEL:-agent:blocked}"
+auto_merge="${DEADLOOP_AUTO_MERGE:-0}"
+external_review_wait_seconds="${DEADLOOP_EXTERNAL_REVIEW_WAIT_SECONDS:-1800}"
 automation_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 prs_json="$(mktemp)"
@@ -38,8 +38,8 @@ args=(
   --external-review-wait-seconds "${external_review_wait_seconds}"
   --exit-code
 )
-if [ -n "${PI_LOOPER_NOW:-}" ]; then
-  args+=(--now "${PI_LOOPER_NOW}")
+if [ -n "${DEADLOOP_NOW:-}" ]; then
+  args+=(--now "${DEADLOOP_NOW}")
 fi
 
 node "${automation_dir}/pr-reviewer-decisions.ts" "${args[@]}" >/dev/null

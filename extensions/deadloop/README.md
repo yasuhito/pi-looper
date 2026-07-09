@@ -1,0 +1,40 @@
+# deadloop extension internals
+
+This directory contains the Pi extension implementation for **deadloop**.
+
+Read the root `README.md` and `docs/public-package-setup.md` for normal setup.
+
+## Local configuration
+
+Configuration lookup order:
+
+1. `DEADLOOP_CONFIG`
+2. `~/.pi/agent/deadloop/projects.json`
+3. this directory's `projects.json` for local development only
+
+Do not commit `projects.json`; it contains local paths, GitHub repositories, and rollout choices.
+
+Each project overlays explicit local config, trusted base-branch repo policy, and package defaults. The repo policy file is `deadloop.project.json`. Repo policy is read only from the trusted `baseBranch` after `git fetch`, never from the PR branch being reviewed.
+
+## State
+
+Runtime state and locks live under `~/.pi/agent/deadloop/`.
+
+## Commands
+
+```text
+/deadloop-status
+/deadloop-doctor
+```
+
+## Deterministic drivers
+
+Each automation may define a `driverFile`. Drivers run after precheck and before any prompt is sent, with `DEADLOOP_*` environment variables. They return JSON with `action` values `skip`, `done`, `needs_llm`, or `error`.
+
+- `issue-coordinator-driver.ts` handles cleanup, candidate selection gates, worker launch, and bounded monitor handoff.
+- `pr-reviewer-driver.ts` handles no-op, pending CI, external review gates, draft gates, reviewer launch, and bounded monitor handoff.
+- `ci-fallback-decision.ts`, `worker-watch-decision.ts`, and related helpers keep deterministic checks out of prompts.
+
+## Runner boundary
+
+v0 uses Herdr for worktrees, tabs, and agent sessions. Herdr-specific code should remain behind runner/automation boundaries so future runners can be added without changing GitHub Issue / PR state semantics.

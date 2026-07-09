@@ -5,7 +5,7 @@ import { spawnSync } from "node:child_process";
 
 import { describe, expect, it } from "vitest";
 
-const helperPath = "extensions/pi-looper/automations/extract-worker-promise.ts";
+const helperPath = "extensions/deadloop/automations/extract-worker-promise.ts";
 
 function runHelper(filePath: string, style: "separate" | "equals" = "separate") {
   const args = style === "equals" ? [helperPath, `--file=${filePath}`] : [helperPath, "--file", filePath];
@@ -15,7 +15,7 @@ function runHelper(filePath: string, style: "separate" | "equals" = "separate") 
 }
 
 function withTempFile(content: string, callback: (filePath: string) => void) {
-  const tempRoot = mkdtempSync(path.join(tmpdir(), "pi-looper-promise-"));
+  const tempRoot = mkdtempSync(path.join(tmpdir(), "deadloop-promise-"));
   try {
     const filePath = path.join(tempRoot, "promise.json");
     writeFileSync(filePath, content);
@@ -45,7 +45,7 @@ describe("extract worker promise helper", () => {
   });
 
   it("reports none for missing promise files", () => {
-    const filePath = path.join(tmpdir(), `pi-looper-missing-${Date.now()}.json`);
+    const filePath = path.join(tmpdir(), `deadloop-missing-${Date.now()}.json`);
 
     expect(runHelper(filePath)).toEqual({ code: 1, status: "none" });
   });

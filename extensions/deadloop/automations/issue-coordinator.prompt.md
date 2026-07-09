@@ -39,7 +39,7 @@
 - driver がすでに Worker を起動している場合は、再起動せず promise 監視だけを行う。
 - Worker 起動が未実行なら、専用 Herdr tab を作ってから `launch-agent.ts` を使う。
 - Worker 名は issue ごとに一意にし、既定名 `pi` のまま起動しない。
-- promise file `<worktreePath>/.pi-looper/promise-<uuid>.json` を完了判定の唯一の権威にする。
+- promise file `<worktreePath>/.deadloop/promise-<uuid>.json` を完了判定の唯一の権威にする。
 - promise helper が `complete` または `blocked` を返したら、直ちにポーリングを打ち切る。例: `complete|blocked) break`。
 - Worker prompt / blocked comment を決定論的に作れる場合は `src/issue-coordinator-renderers.ts` の `renderIssueWorkerPrompt` / `renderIssueBlockedComment` と同等の構造化入力から生成する。
 - 最後に短い日本語要約を出す。

@@ -34,17 +34,15 @@ Copy the example config to Pi's user state directory and edit it for your reposi
 
 ```bash
 mkdir -p ~/.pi/agent/deadloop
-cp ~/.pi/agent/git/github.com/yasuhito/deadloop/extensions/pi-looper/projects.example.json ~/.pi/agent/deadloop/projects.json
+cp ~/.pi/agent/git/github.com/yasuhito/deadloop/extensions/deadloop/projects.example.json ~/.pi/agent/deadloop/projects.json
 $EDITOR ~/.pi/agent/deadloop/projects.json
 ```
 
-For a local development checkout, copy from `/absolute/path/to/deadloop/extensions/pi-looper/projects.example.json` instead.
+For a local development checkout, copy from `/absolute/path/to/deadloop/extensions/deadloop/projects.example.json` instead.
 
-`projects.json` is local configuration. It contains local paths, repository names, and rollout choices, so do **not** commit it. The package includes only `extensions/pi-looper/projects.example.json` as a template.
+`projects.json` is local configuration. It contains local paths, repository names, and rollout choices, so do **not** commit it. The package includes only `extensions/deadloop/projects.example.json` as a template.
 
-Legacy config remains supported: if `~/.pi/agent/deadloop/projects.json` is absent, deadloop falls back to `~/.pi/agent/pi-looper/projects.json`.
-
-Optional shared repository policy lives in `deadloop.project.json` at the target repository root. deadloop reads it only from the trusted `baseBranch` after `git fetch`; a PR branch cannot change the policy used to decide that PR. The legacy `pi-looper.project.json` name remains supported as a fallback. Local `projects.json` explicit values win over repo policy, so remove a key locally when you want to inherit the shared value.
+Optional shared repository policy lives in `deadloop.project.json` at the target repository root. deadloop reads it only from the trusted `baseBranch` after `git fetch`; a PR branch cannot change the policy used to decide that PR. Local `projects.json` explicit values win over repo policy, so remove a key locally when you want to inherit the shared value.
 
 If a project uses `workerAgent: "claude"` or `reviewerAgent: "claude"`, run `claude` interactively once from the target repository root and accept Claude Code workspace trust before enabling the automation.
 
@@ -66,7 +64,7 @@ Key fields:
 
 Repo policy may set only shared, reviewable policy keys: `workerAgent`, `workerModel`, `reviewerAgent`, `reviewerModel`, `checkCommand`, `workerInstructions`, `workerLaunchPolicy`, `labels`, and `id` / `name` / `promptFile` / `precheckFile` / `driverFile` for locally enabled automations. Keep `enabled`, `repoPath`, `githubRepo`, `baseBranch`, `worktreeRoot`, `autoMerge`, `schedule`, and `precheckTimeoutSeconds` local. Invalid JSON or disallowed keys stop that project safely and appear in `/deadloop-status` and `/deadloop-doctor`.
 
-By default deadloop reads `~/.pi/agent/deadloop/projects.json`, then the legacy `~/.pi/agent/pi-looper/projects.json`. Use `DEADLOOP_CONFIG=/path/to/projects.json` only when you intentionally want a different config file. `PI_LOOPER_CONFIG` remains supported as a compatibility alias.
+By default deadloop reads `~/.pi/agent/deadloop/projects.json`. Use `DEADLOOP_CONFIG=/path/to/projects.json` only when you intentionally want a different config file.
 
 ## 3. Create required labels
 
@@ -131,13 +129,6 @@ Useful commands:
 /deadloop-doctor
 ```
 
-Compatibility aliases remain available:
-
-```text
-/pi-looper-status
-/pi-looper-doctor
-```
-
 ## Verification commands
 
 Use these commands before trusting a package change or when validating this repository itself:
@@ -146,11 +137,11 @@ Use these commands before trusting a package change or when validating this repo
 npm test
 npm run lint
 npm run typecheck
-bash -n extensions/pi-looper/automations/*.sh
+bash -n extensions/deadloop/automations/*.sh
 npm pack --dry-run
 ```
 
-`npm pack --dry-run` should show only the public package contents. It must not include `extensions/pi-looper/projects.json`, cache files, Herdr worktrees, `.pi-subagents/`, `node_modules/`, or other local artifacts.
+`npm pack --dry-run` should show only the public package contents. It must not include `extensions/deadloop/projects.json`, cache files, Herdr worktrees, `.pi-subagents/`, `node_modules/`, or other local artifacts.
 
 ## Package contents
 
@@ -158,16 +149,15 @@ The published package is controlled by `package.json` `files`. It intentionally 
 
 - root user docs and metadata: `README.md`, `AGENTS.md`, `LICENSE`
 - public docs under `docs/`
-- the Pi extension entrypoint under `extensions/pi-looper/`
-- the Agent Skills compatibility skill under `skills/`
+- the Pi extension entrypoint under `extensions/deadloop/`
+- the Agent Skills setup skill under `skills/`
 - automation prompts and deterministic helper scripts
-- `extensions/pi-looper/projects.example.json`
+- `extensions/deadloop/projects.example.json`
 - TypeScript source under `src/`
 
 It intentionally excludes local runtime config and generated state:
 
-- `extensions/pi-looper/projects.json`
+- `extensions/deadloop/projects.json`
 - `~/.pi/agent/deadloop/projects.json`
-- legacy `~/.pi/agent/pi-looper/projects.json`
 - Herdr worktrees and runner state
 - dependency folders, caches, logs, and bytecode

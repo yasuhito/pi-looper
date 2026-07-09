@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 
 import { describe, expect, it } from "vitest";
 
-const script = "extensions/pi-looper/automations/pr-reviewer-decisions.ts";
+const script = "extensions/deadloop/automations/pr-reviewer-decisions.ts";
 
 function runSelect(
   prsFixture: string,

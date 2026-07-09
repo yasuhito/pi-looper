@@ -5,7 +5,7 @@ import { normalizeProject, type AutomationFileResolution } from "../src/core";
 
 function foundFile(requested: string | undefined): AutomationFileResolution {
   const name = requested || "";
-  return { requested: name, resolved: name, aliased: false, found: name.length > 0 };
+  return { requested: name, resolved: name, found: name.length > 0 };
 }
 
 async function exerciseDriver(stdout: string, options: { code?: number; stderr?: string } = {}) {
@@ -111,7 +111,7 @@ describe("deterministic automation driver runner", () => {
     expect(result.sent).toEqual([]);
   });
 
-  it("keeps prompt-only automations compatible when no driver is configured", async () => {
+  it("keeps prompt-only automations working when no driver is configured", async () => {
     const project = normalizeProject({
       id: "demo",
       automations: [{ id: "demo:auto", name: "auto", precheckFile: "precheck.sh", promptFile: "full.md" }],

@@ -5,7 +5,7 @@ import { spawnSync } from "node:child_process";
 
 import { describe, expect, it } from "vitest";
 
-const decisionScript = "extensions/pi-looper/automations/pr-reviewer-decisions.ts";
+const decisionScript = "extensions/deadloop/automations/pr-reviewer-decisions.ts";
 
 function runDecision(args: string[]) {
   return spawnSync("node", [decisionScript, ...args], { cwd: process.cwd(), encoding: "utf8" });
@@ -35,7 +35,7 @@ function runPrecheck(
   fixtureName: string,
   options: { autoMerge?: boolean; now?: string; projectId?: string; agentsFixture?: string } = {},
 ): number | null {
-  const tempRoot = mkdtempSync(path.join(tmpdir(), "pi-looper-precheck-"));
+  const tempRoot = mkdtempSync(path.join(tmpdir(), "deadloop-precheck-"));
   try {
     const fakeGhPath = path.join(tempRoot, "gh");
     writeFileSync(
@@ -44,7 +44,7 @@ function runPrecheck(
         "#!/usr/bin/env bash",
         "set -euo pipefail",
         "if [ \"${1:-}\" = \"pr\" ] && [ \"${2:-}\" = \"list\" ]; then",
-        "  cat \"${PI_LOOPER_TEST_FIXTURE:?}\"",
+        "  cat \"${DEADLOOP_TEST_FIXTURE:?}\"",
         "  exit 0",
         "fi",
         "echo \"unexpected gh invocation: $*\" >&2",
@@ -61,7 +61,7 @@ function runPrecheck(
         "#!/usr/bin/env bash",
         "set -euo pipefail",
         "if [ \"${1:-}\" = \"agent\" ] && [ \"${2:-}\" = \"list\" ]; then",
-        "  cat \"${PI_LOOPER_TEST_HERDR_FIXTURE:?}\"",
+        "  cat \"${DEADLOOP_TEST_HERDR_FIXTURE:?}\"",
         "  exit 0",
         "fi",
         "echo \"unexpected herdr invocation: $*\" >&2",
@@ -71,23 +71,23 @@ function runPrecheck(
     );
     chmodSync(fakeHerdrPath, 0o755);
 
-    const result = spawnSync("bash", ["extensions/pi-looper/automations/pr-reviewer.precheck.sh"], {
+    const result = spawnSync("bash", ["extensions/deadloop/automations/pr-reviewer.precheck.sh"], {
       cwd: process.cwd(),
       env: {
         ...process.env,
         PATH: `${tempRoot}:${process.env.PATH || ""}`,
-        PI_LOOPER_REPO_PATH: process.cwd(),
-        PI_LOOPER_GITHUB_REPO: "owner/repo",
-        PI_LOOPER_PROJECT_ID: options.projectId || "demo",
-        PI_LOOPER_AUTO_MERGE: options.autoMerge ? "1" : "0",
-        PI_LOOPER_REVIEW_LABEL: "agent:review",
-        PI_LOOPER_REVIEWING_LABEL: "agent:reviewing",
-        PI_LOOPER_HUMAN_LABEL: "ready-for-human",
-        PI_LOOPER_BLOCKED_LABEL: "agent:blocked",
-        PI_LOOPER_EXTERNAL_REVIEW_WAIT_SECONDS: "1800",
-        PI_LOOPER_NOW: options.now || "2026-07-04T00:30:00Z",
-        PI_LOOPER_TEST_FIXTURE: path.join(process.cwd(), "test/fixtures/pr-reviewer", fixtureName),
-        PI_LOOPER_TEST_HERDR_FIXTURE: path.join(
+        DEADLOOP_REPO_PATH: process.cwd(),
+        DEADLOOP_GITHUB_REPO: "owner/repo",
+        DEADLOOP_PROJECT_ID: options.projectId || "demo",
+        DEADLOOP_AUTO_MERGE: options.autoMerge ? "1" : "0",
+        DEADLOOP_REVIEW_LABEL: "agent:review",
+        DEADLOOP_REVIEWING_LABEL: "agent:reviewing",
+        DEADLOOP_HUMAN_LABEL: "ready-for-human",
+        DEADLOOP_BLOCKED_LABEL: "agent:blocked",
+        DEADLOOP_EXTERNAL_REVIEW_WAIT_SECONDS: "1800",
+        DEADLOOP_NOW: options.now || "2026-07-04T00:30:00Z",
+        DEADLOOP_TEST_FIXTURE: path.join(process.cwd(), "test/fixtures/pr-reviewer", fixtureName),
+        DEADLOOP_TEST_HERDR_FIXTURE: path.join(
           process.cwd(),
           "test/fixtures/pr-reviewer",
           options.agentsFixture || "agents-empty.json",

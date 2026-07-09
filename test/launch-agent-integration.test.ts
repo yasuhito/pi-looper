@@ -5,7 +5,7 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-const launcher = path.join(process.cwd(), "extensions/pi-looper/automations/launch-agent.ts");
+const launcher = path.join(process.cwd(), "extensions/deadloop/automations/launch-agent.ts");
 
 let sandbox: string;
 let binDir: string;

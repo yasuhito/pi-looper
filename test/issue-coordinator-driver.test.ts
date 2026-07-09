@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-const driverScript = "extensions/pi-looper/automations/issue-coordinator-driver.ts";
+const driverScript = "extensions/deadloop/automations/issue-coordinator-driver.ts";
 
 function runDriverFixture(fixtureName: string, extraEnv: Record<string, string> = {}) {
   const result = spawnSync("node", [driverScript, "--fixture", path.join("test/fixtures/issue-coordinator", fixtureName)], {
@@ -12,11 +12,11 @@ function runDriverFixture(fixtureName: string, extraEnv: Record<string, string> 
     encoding: "utf8",
     env: {
       ...process.env,
-      PI_LOOPER_PROJECT_ID: "demo",
-      PI_LOOPER_REPO_PATH: "/repo path",
-      PI_LOOPER_GITHUB_REPO: "owner/repo",
-      PI_LOOPER_CHECK_COMMAND: "npm test",
-      PI_LOOPER_WORKER_AGENT: "pi",
+      DEADLOOP_PROJECT_ID: "demo",
+      DEADLOOP_REPO_PATH: "/repo path",
+      DEADLOOP_GITHUB_REPO: "owner/repo",
+      DEADLOOP_CHECK_COMMAND: "npm test",
+      DEADLOOP_WORKER_AGENT: "pi",
       ...extraEnv,
     },
   });
@@ -68,29 +68,29 @@ describe("issue coordinator deterministic driver", () => {
   });
 
   it("can launch workers deterministically before asking for monitoring", () => {
-    expect(runDriverFixture("driver-ready-worker.json", { PI_LOOPER_SIMULATE_LAUNCH: "1" }).driverAction).toBe(
+    expect(runDriverFixture("driver-ready-worker.json", { DEADLOOP_SIMULATE_LAUNCH: "1" }).driverAction).toBe(
       "worker_monitor_request",
     );
   });
 
   it("reports the deterministic worker promise path", () => {
-    expect(runDriverFixture("driver-ready-worker.json", { PI_LOOPER_SIMULATE_LAUNCH: "1" }).launch.promiseFile).toContain(
-      ".pi-looper/promise-",
+    expect(runDriverFixture("driver-ready-worker.json", { DEADLOOP_SIMULATE_LAUNCH: "1" }).launch.promiseFile).toContain(
+      ".deadloop/promise-",
     );
   });
 
   it("preserves validation before PR creation after deterministic worker launch", () => {
-    expect(runDriverFixture("driver-ready-worker.json", { PI_LOOPER_SIMULATE_LAUNCH: "1" }).prompt).toContain(
+    expect(runDriverFixture("driver-ready-worker.json", { DEADLOOP_SIMULATE_LAUNCH: "1" }).prompt).toContain(
       "Run validation including `npm test` before creating any PR",
     );
   });
 
   it("receives worker agent settings from the extension environment", () => {
-    expect(readFileSync("extensions/pi-looper/index.ts", "utf8")).toContain("PI_LOOPER_WORKER_AGENT");
+    expect(readFileSync("extensions/deadloop/index.ts", "utf8")).toContain("DEADLOOP_WORKER_AGENT");
   });
 
   it("receives worker model settings from the extension environment", () => {
-    expect(readFileSync("extensions/pi-looper/index.ts", "utf8")).toContain("PI_LOOPER_WORKER_MODEL");
+    expect(readFileSync("extensions/deadloop/index.ts", "utf8")).toContain("DEADLOOP_WORKER_MODEL");
   });
 
   it("uses the TypeScript renderer for blocked comments", () => {

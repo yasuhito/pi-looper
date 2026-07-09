@@ -11,7 +11,7 @@
       "labels": [{"name": "agent:review"}],
       "statusCheckRollup": [],
       "comments": [
-        {"createdAt": "2026-07-07T23:00:00Z", "author": {"login": "pi-looper"}, "body": "@coderabbitai review\n\n<!-- pi-looper:external-review-request head=feed24 -->"}
+        {"createdAt": "2026-07-07T23:00:00Z", "author": {"login": "deadloop"}, "body": "@coderabbitai review\n\n<!-- deadloop:external-review-request head=feed24 -->"}
       ],
       "reviewRequests": []
     }

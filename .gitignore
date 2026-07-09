@@ -4,5 +4,5 @@ node_modules/
 __pycache__/
 *.py[cod]
 .env
-extensions/pi-looper/projects.json
+extensions/deadloop/projects.json
 .pi-subagents/

@@ -4,7 +4,7 @@ import { normalizeProject } from "../src/core";
 import { buildDoctorSnapshot, formatDoctorReport } from "../src/doctor";
 
 const project = normalizeProject({
-  id: "pi-looper",
+  id: "deadloop",
   repoPath: "/repo",
   githubRepo: "owner/repo",
   worktreeRoot: "/wt",
@@ -17,11 +17,11 @@ const NOW = Date.parse("2026-07-05T00:00:00Z");
 const SLOT_MS = 10 * 60_000;
 
 function withAutomationState(entry: Record<string, unknown>) {
-  return { state: { automations: { "pi-looper:auto": entry } } };
+  return { state: { automations: { "deadloop:auto": entry } } };
 }
 
 const claudeProject = normalizeProject({
-  id: "pi-looper",
+  id: "deadloop",
   repoPath: "/repo",
   githubRepo: "owner/repo",
   worktreeRoot: "/wt",
@@ -29,7 +29,7 @@ const claudeProject = normalizeProject({
 });
 
 const reviewerClaudeProject = normalizeProject({
-  id: "pi-looper",
+  id: "deadloop",
   repoPath: "/repo",
   githubRepo: "owner/repo",
   worktreeRoot: "/wt",
@@ -97,7 +97,7 @@ describe("deadloop doctor", () => {
   it("does not report fresh in-progress issues", () => {
     const result = snapshot({
       issues: [{ number: 2, labels: ["agent:in-progress"], updatedAt: "2026-07-04T00:00:01Z" }],
-      agents: [{ name: "pi-looper-issue-2-worker", agent_status: "working" }],
+      agents: [{ name: "deadloop-issue-2-worker", agent_status: "working" }],
     });
 
     expect(result.findings).toEqual([]);
@@ -246,7 +246,7 @@ describe("deadloop doctor", () => {
   it("does not report a reviewing claim when the reviewer agent is working", () => {
     const result = snapshot({
       openPrs: [{ number: 10, headRefName: "agent/issue-10-demo", labels: ["agent:reviewing"] }],
-      agents: [{ name: "pi-looper-pr-10-reviewer", agent_status: "working" }],
+      agents: [{ name: "deadloop-pr-10-reviewer", agent_status: "working" }],
     });
 
     expect(result.findings).toEqual([]);

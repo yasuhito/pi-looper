@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Deterministically clean completed pi-looper Herdr worker worktrees.
+// Deterministically clean completed deadloop Herdr worker worktrees.
 // CommonJS-shaped so it can run directly with `node cleanup-completed-worker-worktrees.ts`.
 
 const fs = require("node:fs") as typeof import("node:fs");
@@ -214,11 +214,11 @@ function selectCleanupPlan({
 
 function cleanupConfigFromEnv(): CleanupConfig {
   return {
-    repo: process.env.PI_LOOPER_GITHUB_REPO || "",
-    repoPath: process.env.PI_LOOPER_REPO_PATH || "",
-    worktreeRoot: process.env.PI_LOOPER_WORKTREE_ROOT || "",
-    reviewLabel: process.env.PI_LOOPER_REVIEW_LABEL || DEFAULT_REVIEW_LABEL,
-    humanLabel: process.env.PI_LOOPER_HUMAN_LABEL || DEFAULT_HUMAN_LABEL,
+    repo: process.env.DEADLOOP_GITHUB_REPO || "",
+    repoPath: process.env.DEADLOOP_REPO_PATH || "",
+    worktreeRoot: process.env.DEADLOOP_WORKTREE_ROOT || "",
+    reviewLabel: process.env.DEADLOOP_REVIEW_LABEL || DEFAULT_REVIEW_LABEL,
+    humanLabel: process.env.DEADLOOP_HUMAN_LABEL || DEFAULT_HUMAN_LABEL,
   };
 }
 
@@ -353,7 +353,7 @@ function main(argv: string[] = process.argv.slice(2)): number {
     result = loadFixtureCleanupPlan(args.fixture);
   } else {
     const config = cleanupConfigFromEnv();
-    if (!config.repo || !config.repoPath) throw new Error("PI_LOOPER_GITHUB_REPO and PI_LOOPER_REPO_PATH are required");
+    if (!config.repo || !config.repoPath) throw new Error("DEADLOOP_GITHUB_REPO and DEADLOOP_REPO_PATH are required");
     const plan = loadLiveCleanupPlan(config);
     result = args.apply ? applyCleanupPlan(plan, config) : plan;
   }

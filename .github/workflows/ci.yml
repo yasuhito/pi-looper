@@ -37,7 +37,7 @@ jobs:
         run: npm run typecheck
 
       - name: Check shell automation syntax
-        run: bash -n extensions/pi-looper/automations/*.sh
+        run: bash -n extensions/deadloop/automations/*.sh
 
       - name: Check package contents
         run: npm pack --dry-run

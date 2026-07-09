@@ -5,10 +5,10 @@ import { describe, expect, it } from "vitest";
 const { renderIssueWorkerPrompt } = require("../src/issue-coordinator-renderers.ts");
 
 const contractFiles = [
-  "extensions/pi-looper/automations/issue-coordinator.prompt.md",
-  "extensions/pi-looper/automations/pr-reviewer.prompt.md",
-  "extensions/pi-looper/automations/extract-worker-promise.ts",
-  "extensions/pi-looper/automations/issue-coordinator-driver.ts",
+  "extensions/deadloop/automations/issue-coordinator.prompt.md",
+  "extensions/deadloop/automations/pr-reviewer.prompt.md",
+  "extensions/deadloop/automations/extract-worker-promise.ts",
+  "extensions/deadloop/automations/issue-coordinator-driver.ts",
   "src/issue-coordinator-renderers.ts",
 ];
 
@@ -25,7 +25,7 @@ function issueWorkerPrompt(): string {
     githubRepo: "owner/repo",
     workerInstructions: "AGENTS.md を読む。",
     checkCommand: "npm test",
-    promiseFile: "<worktreePath>/.pi-looper/promise-<uuid>.json",
+    promiseFile: "<worktreePath>/.deadloop/promise-<uuid>.json",
   });
 }
 
@@ -43,7 +43,7 @@ describe("promise file contract", () => {
   });
 
   it("documents unique promise file allocation", () => {
-    expect(issueWorkerPrompt()).toContain("<worktreePath>/.pi-looper/promise-<uuid>.json");
+    expect(issueWorkerPrompt()).toContain("<worktreePath>/.deadloop/promise-<uuid>.json");
   });
 
   it("requires blocked workers to write a promise file", () => {
@@ -51,7 +51,7 @@ describe("promise file contract", () => {
   });
 
   it("uses the promise file as the completion authority", () => {
-    expect(readFileSync("extensions/pi-looper/automations/issue-coordinator.prompt.md", "utf8")).toContain(
+    expect(readFileSync("extensions/deadloop/automations/issue-coordinator.prompt.md", "utf8")).toContain(
       "唯一の権威",
     );
   });

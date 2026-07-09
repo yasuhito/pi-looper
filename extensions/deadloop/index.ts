@@ -4,14 +4,12 @@ const os = require("node:os");
 const path = require("node:path");
 
 const EXTENSION_NAME = "deadloop";
-const LEGACY_EXTENSION_NAME = "pi-looper";
 const STATUS_KEY = EXTENSION_NAME;
 const TICK_MS = 30_000;
 const MODULE_LOAD_TIME_MS = Date.now();
 const {
   DEFAULT_TIMEZONE,
   REPO_POLICY_FILE,
-  LEGACY_REPO_POLICY_FILE,
   automationStateKey,
   codeFreshnessWarning,
   getDueSlot,
@@ -34,18 +32,14 @@ const { runScheduledAutomation } = require("../../src/automation-runner.ts");
 
 const CONFIG_DIR = process.env.PI_CODING_AGENT_DIR || path.join(os.homedir(), ".pi", "agent");
 const STATE_DIR = path.join(CONFIG_DIR, EXTENSION_NAME);
-const LEGACY_STATE_DIR = path.join(CONFIG_DIR, LEGACY_EXTENSION_NAME);
 const STATE_PATH = path.join(STATE_DIR, "state.json");
 
 function resolveExtensionDir() {
   const candidates = [
     process.env.DEADLOOP_EXTENSION_DIR,
-    process.env.PI_LOOPER_EXTENSION_DIR,
     __dirname,
     path.join(CONFIG_DIR, "extensions", EXTENSION_NAME),
-    path.join(CONFIG_DIR, "extensions", LEGACY_EXTENSION_NAME),
     path.join(os.homedir(), ".pi", "agent", "extensions", EXTENSION_NAME),
-    path.join(os.homedir(), ".pi", "agent", "extensions", LEGACY_EXTENSION_NAME),
   ].filter(Boolean);
   for (const candidate of candidates) {
     try {
@@ -64,7 +58,6 @@ const CODE_FRESHNESS_SOURCE_PATHS = [
 const CONFIG_PATH = resolveConfigPath({
   env: process.env,
   stateDir: STATE_DIR,
-  legacyStateDir: LEGACY_STATE_DIR,
   extensionDir: EXTENSION_DIR,
   exists: fs.existsSync,
   joinPath: path.join,
@@ -87,7 +80,7 @@ function writeJsonFile(file, value) {
 }
 
 function debugLog(...args) {
-  if (process.env.DEADLOOP_DEBUG === "1" || process.env.PI_LOOPER_DEBUG === "1") {
+  if (process.env.DEADLOOP_DEBUG === "1") {
     console.warn(`[${EXTENSION_NAME}]`, ...args);
   }
 }
@@ -122,14 +115,12 @@ function trustedRepoPolicyProvider(project) {
 
   const show = gitSync(repoPath, ["show", `${baseBranch}:${REPO_POLICY_FILE}`], 10_000);
   if (show.status === 0) return { status: "loaded", text: show.stdout || "{}" };
-  const legacyShow = gitSync(repoPath, ["show", `${baseBranch}:${LEGACY_REPO_POLICY_FILE}`], 10_000);
-  if (legacyShow.status === 0) return { status: "loaded", text: legacyShow.stdout || "{}" };
   debugLog("trusted repo policy missing", repoPath, baseBranch, String(show.stderr || show.stdout || "").trim());
   return { status: "missing" };
 }
 
 function projectFilter() {
-  return process.env.DEADLOOP_PROJECTS || process.env.PI_LOOPER_PROJECTS || "";
+  return process.env.DEADLOOP_PROJECTS || "";
 }
 
 function loadProjectsResult() {
@@ -320,35 +311,35 @@ function activeProject(cwd, projects) {
 
 function automationEnv(project, automation) {
   const env: Record<string, string | undefined> = {
-    PI_LOOPER_PROJECT_ID: project.id,
-    PI_LOOPER_REPO_PATH: project.repoPath,
-    PI_LOOPER_GITHUB_REPO: project.githubRepo,
-    PI_LOOPER_BASE_BRANCH: project.baseBranch,
-    PI_LOOPER_WORKTREE_ROOT: project.worktreeRoot || "",
-    PI_LOOPER_CHECK_COMMAND: project.checkCommand || "git diff --check",
-    PI_LOOPER_WORKER_AGENT: project.workerAgent || "pi",
-    PI_LOOPER_WORKER_MODEL: project.workerModel || "",
-    PI_LOOPER_WORKER_INSTRUCTIONS: project.workerInstructions || "",
-    PI_LOOPER_WORKER_LAUNCH_POLICY: project.workerLaunchPolicy || "",
-    PI_LOOPER_REVIEWER_AGENT: project.reviewerAgent || "pi",
-    PI_LOOPER_REVIEWER_MODEL: project.reviewerModel || "",
-    PI_LOOPER_AUTO_MERGE: project.autoMerge ? "1" : "0",
-    PI_LOOPER_CI_FALLBACK_ENABLED: project.ciFallback?.enabled ? "1" : "0",
-    PI_LOOPER_CI_FALLBACK_MODE: project.ciFallback?.mode || "billing-only",
-    PI_LOOPER_CI_FALLBACK_ALLOW_AUTO_MERGE: project.ciFallback?.allowAutoMerge ? "1" : "0",
-    PI_LOOPER_CI_FALLBACK_LOCAL_COMMANDS: project.ciFallback?.localCommands || "",
-    PI_LOOPER_READY_LABEL: project.labels.ready,
-    PI_LOOPER_IMPLEMENT_LABEL: project.labels.implement,
-    PI_LOOPER_IN_PROGRESS_LABEL: project.labels.inProgress,
-    PI_LOOPER_BLOCKED_LABEL: project.labels.blocked,
-    PI_LOOPER_REVIEW_LABEL: project.labels.review,
-    PI_LOOPER_REVIEWING_LABEL: project.labels.reviewing,
-    PI_LOOPER_HUMAN_LABEL: project.labels.human,
-    PI_LOOPER_NEEDS_INFO_LABEL: project.labels.needsInfo,
-    PI_LOOPER_WONTFIX_LABEL: project.labels.wontfix,
-    PI_LOOPER_NEEDS_TRIAGE_LABEL: project.labels.needsTriage,
-    PI_LOOPER_AUTOMATION_ID: automation.id,
-    PI_LOOPER_AUTOMATION_NAME: automation.name,
+    DEADLOOP_PROJECT_ID: project.id,
+    DEADLOOP_REPO_PATH: project.repoPath,
+    DEADLOOP_GITHUB_REPO: project.githubRepo,
+    DEADLOOP_BASE_BRANCH: project.baseBranch,
+    DEADLOOP_WORKTREE_ROOT: project.worktreeRoot || "",
+    DEADLOOP_CHECK_COMMAND: project.checkCommand || "git diff --check",
+    DEADLOOP_WORKER_AGENT: project.workerAgent || "pi",
+    DEADLOOP_WORKER_MODEL: project.workerModel || "",
+    DEADLOOP_WORKER_INSTRUCTIONS: project.workerInstructions || "",
+    DEADLOOP_WORKER_LAUNCH_POLICY: project.workerLaunchPolicy || "",
+    DEADLOOP_REVIEWER_AGENT: project.reviewerAgent || "pi",
+    DEADLOOP_REVIEWER_MODEL: project.reviewerModel || "",
+    DEADLOOP_AUTO_MERGE: project.autoMerge ? "1" : "0",
+    DEADLOOP_CI_FALLBACK_ENABLED: project.ciFallback?.enabled ? "1" : "0",
+    DEADLOOP_CI_FALLBACK_MODE: project.ciFallback?.mode || "billing-only",
+    DEADLOOP_CI_FALLBACK_ALLOW_AUTO_MERGE: project.ciFallback?.allowAutoMerge ? "1" : "0",
+    DEADLOOP_CI_FALLBACK_LOCAL_COMMANDS: project.ciFallback?.localCommands || "",
+    DEADLOOP_READY_LABEL: project.labels.ready,
+    DEADLOOP_IMPLEMENT_LABEL: project.labels.implement,
+    DEADLOOP_IN_PROGRESS_LABEL: project.labels.inProgress,
+    DEADLOOP_BLOCKED_LABEL: project.labels.blocked,
+    DEADLOOP_REVIEW_LABEL: project.labels.review,
+    DEADLOOP_REVIEWING_LABEL: project.labels.reviewing,
+    DEADLOOP_HUMAN_LABEL: project.labels.human,
+    DEADLOOP_NEEDS_INFO_LABEL: project.labels.needsInfo,
+    DEADLOOP_WONTFIX_LABEL: project.labels.wontfix,
+    DEADLOOP_NEEDS_TRIAGE_LABEL: project.labels.needsTriage,
+    DEADLOOP_AUTOMATION_ID: automation.id,
+    DEADLOOP_AUTOMATION_NAME: automation.name,
   };
 
   return env;
@@ -358,26 +349,15 @@ function shellQuote(value) {
   return `'${String(value).replace(/'/g, `'"'"'`)}'`;
 }
 
-function resolveAutomationFileInDir(kind, automation, requested) {
-  const resolution = resolveAutomationFile(requested, (fileName) =>
-    fs.existsSync(path.join(AUTOMATION_DIR, fileName)),
-  );
-  if (resolution.aliased) {
-    debugLog(
-      "automation file alias",
-      automation.name,
-      kind,
-      `${resolution.requested} -> ${resolution.resolved}`,
-    );
-  }
-  return resolution;
+function resolveAutomationFileInDir(_kind, _automation, requested) {
+  return resolveAutomationFile(requested, (fileName) => fs.existsSync(path.join(AUTOMATION_DIR, fileName)));
 }
 
 async function runAutomationScript(pi, project, automation, automationFile) {
   const scriptPath = path.join(AUTOMATION_DIR, automationFile);
   const env = automationEnv(project, automation);
   const exports = Object.entries(env)
-    .filter(([key]) => key.startsWith("PI_LOOPER_"))
+    .filter(([key]) => key.startsWith("DEADLOOP_"))
     .map(([key, value]) => `${key}=${shellQuote(value)}`)
     .join(" ");
   return await pi.exec("bash", ["-lc", `${exports} ${shellQuote(scriptPath)}`], {
@@ -586,7 +566,7 @@ async function runAutomation(pi, ctx, project, automation, dueSlot, state) {
     isIdle: typeof ctx.isIdle === "function" ? () => ctx.isIdle() : undefined,
     notify: (message, level) => {
       try {
-        ctx.ui.notify(message.replace(/^pi-looper /, `${EXTENSION_NAME} `), level);
+        ctx.ui.notify(message.replace(/^deadloop /, `${EXTENSION_NAME} `), level);
       } catch {}
     },
     now: () => Date.now(),
@@ -626,22 +606,8 @@ export default function (pi) {
   );
   registerReportCommand(
     pi,
-    "pi-looper-status",
-    "Compatibility alias for /deadloop-status",
-    "deadloop-status",
-    buildLiveStatusReport,
-  );
-  registerReportCommand(
-    pi,
     "deadloop-doctor",
     "Diagnose known deadloop failure modes and show copy-paste recovery or inspection commands",
-    "deadloop-doctor",
-    buildLiveDoctorReport,
-  );
-  registerReportCommand(
-    pi,
-    "pi-looper-doctor",
-    "Compatibility alias for /deadloop-doctor",
     "deadloop-doctor",
     buildLiveDoctorReport,
   );
@@ -717,9 +683,7 @@ export default function (pi) {
     if (!project) return;
     if (
       process.env.DEADLOOP === "off" ||
-      process.env.DEADLOOP_AUTOMATIONS === "off" ||
-      process.env.PI_LOOPER === "off" ||
-      process.env.PI_LOOPER_AUTOMATIONS === "off"
+      process.env.DEADLOOP_AUTOMATIONS === "off"
     ) {
       return;
     }
