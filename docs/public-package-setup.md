@@ -1,50 +1,52 @@
 # Public package setup
 
-This guide is for first-time users installing `pi-looper` into a repository they control. Start with the smallest safe loop, then enable more automation only after you have observed it on real issues.
+This guide is for first-time users installing **deadloop** into a repository they control. Start with the smallest safe loop, then enable more automation only after observing it on real issues.
 
 ## 1. Install the package
 
 Install from GitHub:
 
 ```bash
-pi install git:github.com/yasuhito/pi-looper
+pi install git:github.com/yasuhito/deadloop
 ```
 
-If you prefer to start from the Agent Skills ecosystem, install the compatibility skill first:
+If you prefer to start from the Agent Skills ecosystem, install the setup skill first:
 
 ```bash
-npx skills@latest add yasuhito/pi-looper
+npx skills@latest add yasuhito/deadloop
 ```
 
-The Skills CLI installs a `pi-looper` setup skill for agents. It does not activate the Pi extension by itself, so run `pi install git:github.com/yasuhito/pi-looper` as the package activation step.
+The Skills CLI installs a `deadloop` setup skill for agents. It does not activate the Pi extension by itself, so run `pi install git:github.com/yasuhito/deadloop` as the package activation step.
 
 For a local checkout or development build:
 
 ```bash
-pi install /absolute/path/to/pi-looper
+pi install /absolute/path/to/deadloop
 # or, for a one-off trial without changing settings:
-pi -e /absolute/path/to/pi-looper
+pi -e /absolute/path/to/deadloop
 ```
 
 Pi packages and extensions run with your local user permissions. Install only from source you trust.
 
 ## 2. Create local configuration
 
-Copy the example config to Pi's user state directory and edit it for your repository. If you installed from GitHub, Pi clones the package under `~/.pi/agent/git/github.com/yasuhito/pi-looper`:
+Copy the example config to Pi's user state directory and edit it for your repository. If you installed from GitHub, Pi clones the package under `~/.pi/agent/git/github.com/yasuhito/deadloop`:
 
 ```bash
-mkdir -p ~/.pi/agent/pi-looper
-cp ~/.pi/agent/git/github.com/yasuhito/pi-looper/extensions/pi-looper/projects.example.json ~/.pi/agent/pi-looper/projects.json
-$EDITOR ~/.pi/agent/pi-looper/projects.json
+mkdir -p ~/.pi/agent/deadloop
+cp ~/.pi/agent/git/github.com/yasuhito/deadloop/extensions/pi-looper/projects.example.json ~/.pi/agent/deadloop/projects.json
+$EDITOR ~/.pi/agent/deadloop/projects.json
 ```
 
-For a local development checkout, copy from `/absolute/path/to/pi-looper/extensions/pi-looper/projects.example.json` instead.
+For a local development checkout, copy from `/absolute/path/to/deadloop/extensions/pi-looper/projects.example.json` instead.
 
 `projects.json` is local configuration. It contains local paths, repository names, and rollout choices, so do **not** commit it. The package includes only `extensions/pi-looper/projects.example.json` as a template.
 
-Optional shared repository policy lives in `pi-looper.project.json` at the target repository root. pi-looper reads it only from the trusted `baseBranch` after `git fetch`; a PR branch cannot change the policy used to decide that PR. Local `projects.json` explicit values win over repo policy, so remove a key locally when you want to inherit the shared value.
+Legacy config remains supported: if `~/.pi/agent/deadloop/projects.json` is absent, deadloop falls back to `~/.pi/agent/pi-looper/projects.json`.
 
-If a project uses `workerAgent: "claude"`, run `claude` interactively once from the target repository root and accept Claude Code workspace trust before enabling the automation.
+Optional shared repository policy lives in `deadloop.project.json` at the target repository root. deadloop reads it only from the trusted `baseBranch` after `git fetch`; a PR branch cannot change the policy used to decide that PR. The legacy `pi-looper.project.json` name remains supported as a fallback. Local `projects.json` explicit values win over repo policy, so remove a key locally when you want to inherit the shared value.
+
+If a project uses `workerAgent: "claude"` or `reviewerAgent: "claude"`, run `claude` interactively once from the target repository root and accept Claude Code workspace trust before enabling the automation.
 
 Key fields:
 
@@ -56,13 +58,15 @@ Key fields:
 - `autoMerge` — keep `false` until the repository has proven safeguards. Only `true` allows the PR reviewer automation to squash merge and delete the head branch after its gates pass.
 - `workerInstructions` — repository-specific instructions injected into worker prompts.
 - `workerAgent` — worker CLI agent type. Allowed values are `"pi"` and `"claude"`; the default is `"pi"`.
-- `workerModel` — optional worker model passed through verbatim in the format understood by the selected `workerAgent` (`provider/id` for Pi, `opus` / `claude-opus-4-8` style names for Claude Code CLI).
+- `workerModel` — optional worker model passed through verbatim in the format understood by the selected `workerAgent`.
+- `reviewerAgent` — reviewer CLI agent type. Allowed values are `"pi"` and `"claude"`; the default is `"pi"`.
+- `reviewerModel` — optional reviewer model passed through verbatim.
 - `labels` — GitHub labels used to coordinate issue and PR state.
 - `automations` — scheduled automation entries and their prompt/precheck files. Optional `driverFile` entries run bundled deterministic automation scripts after precheck and before sending any prompt; the driver can return `skip`, `done`, `needs_llm`, or `error` JSON to avoid unnecessary LLM context.
 
-Repo policy may set only shared, reviewable policy keys: `workerAgent`, `workerModel`, `reviewerAgent`, `reviewerModel`, `checkCommand`, `workerInstructions`, `workerLaunchPolicy`, `labels`, and `id` / `name` / `promptFile` / `precheckFile` / `driverFile` for locally enabled automations. Keep `enabled`, `repoPath`, `githubRepo`, `baseBranch`, `worktreeRoot`, `autoMerge`, `schedule`, and `precheckTimeoutSeconds` local. Invalid JSON or disallowed keys stop that project safely and appear in `/pi-looper-status` and `/pi-looper-doctor`.
+Repo policy may set only shared, reviewable policy keys: `workerAgent`, `workerModel`, `reviewerAgent`, `reviewerModel`, `checkCommand`, `workerInstructions`, `workerLaunchPolicy`, `labels`, and `id` / `name` / `promptFile` / `precheckFile` / `driverFile` for locally enabled automations. Keep `enabled`, `repoPath`, `githubRepo`, `baseBranch`, `worktreeRoot`, `autoMerge`, `schedule`, and `precheckTimeoutSeconds` local. Invalid JSON or disallowed keys stop that project safely and appear in `/deadloop-status` and `/deadloop-doctor`.
 
-By default pi-looper reads `~/.pi/agent/pi-looper/projects.json`. Use `PI_LOOPER_CONFIG=/path/to/projects.json` only when you intentionally want a different config file.
+By default deadloop reads `~/.pi/agent/deadloop/projects.json`, then the legacy `~/.pi/agent/pi-looper/projects.json`. Use `DEADLOOP_CONFIG=/path/to/projects.json` only when you intentionally want a different config file. `PI_LOOPER_CONFIG` remains supported as a compatibility alias.
 
 ## 3. Create required labels
 
@@ -85,26 +89,15 @@ An issue is eligible for the issue coordinator only when it has both:
 - `ready-for-agent`
 - `agent:implement`
 
-Main control labels:
-
-- `agent:in-progress` — implementation automation is working on the issue.
-- `agent:review` — PR is ready for automated review.
-- `agent:reviewing` — PR reviewer automation is currently processing the PR.
-- `agent:blocked` — stop automated processing.
-- `ready-for-human` — handoff to a human reviewer.
-- `needs-info` — the issue or PR needs more information before automation can continue.
-
 ## 4. Roll out in safe phases
 
 ### Phase 1: Issue coordination only
 
-Start with only `issue-coordinator` enabled in `automations`. Its deterministic driver handles no-op, cleanup, and gate cases before any LLM prompt is sent; when implementation is needed it starts a Herdr worktree with a Pi worker, verifies the result, and creates a PR. Humans still review and merge.
-
-Use this phase to check that issue contracts are clear, worker instructions are sufficient, and `checkCommand` catches failures.
+Start with only `issue-coordinator` enabled in `automations`. Its deterministic driver handles no-op, cleanup, and gate cases before any LLM prompt is sent; when implementation is needed it starts a Herdr worktree with a worker. Humans still review and merge.
 
 ### Phase 2: Add PR reviewer, still no auto-merge
 
-Add `pr-reviewer` only after Phase 1 is reliable. Its deterministic driver handles no-op, pending-CI, external-review-wait, draft, and external-review-request cases before any LLM prompt is sent. Keep:
+Add `pr-reviewer` only after Phase 1 is reliable. Keep:
 
 ```json
 "autoMerge": false
@@ -122,13 +115,27 @@ Only consider:
 
 after you have branch protection, CI, review expectations, dry-run/manual approval practices, and clear stop conditions. `autoMerge: true` permits the PR reviewer automation to squash merge and delete the head branch when its gates pass. It is intentionally opt-in.
 
-## 5. Run pi-looper from the target repository
+## 5. Run deadloop from the target repository
 
-pi-looper acts only when Pi's current directory is `repoPath` or inside it:
+deadloop acts only when Pi's current directory is `repoPath` or inside it:
 
 ```bash
 cd /absolute/path/to/your/repo
 pi
+```
+
+Useful commands:
+
+```text
+/deadloop-status
+/deadloop-doctor
+```
+
+Compatibility aliases remain available:
+
+```text
+/pi-looper-status
+/pi-looper-doctor
 ```
 
 ## Verification commands
@@ -151,7 +158,7 @@ The published package is controlled by `package.json` `files`. It intentionally 
 
 - root user docs and metadata: `README.md`, `AGENTS.md`, `LICENSE`
 - public docs under `docs/`
-- the Pi extension entrypoint
+- the Pi extension entrypoint under `extensions/pi-looper/`
 - the Agent Skills compatibility skill under `skills/`
 - automation prompts and deterministic helper scripts
 - `extensions/pi-looper/projects.example.json`
@@ -160,6 +167,7 @@ The published package is controlled by `package.json` `files`. It intentionally 
 It intentionally excludes local runtime config and generated state:
 
 - `extensions/pi-looper/projects.json`
-- `~/.pi/agent/pi-looper/projects.json`
+- `~/.pi/agent/deadloop/projects.json`
+- legacy `~/.pi/agent/pi-looper/projects.json`
 - Herdr worktrees and runner state
-- dependency folders, caches, logs, and Python bytecode
+- dependency folders, caches, logs, and bytecode

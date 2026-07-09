@@ -331,7 +331,7 @@ function formatAutomationSummary(summary: string | undefined): string {
 export function formatStatusReport(snapshot: StatusSnapshot): string {
   if (!snapshot.project) {
     return [
-      `pi-looper status: no active project`,
+      `deadloop status: no active project`,
       `cwd: ${snapshot.cwd}`,
       ...snapshot.warnings.map((warning) => `warning: ${warning}`),
     ].join("\n");
@@ -339,7 +339,7 @@ export function formatStatusReport(snapshot: StatusSnapshot): string {
 
   const project = snapshot.project;
   const lines = [
-    `pi-looper status: ${project.id}`,
+    `deadloop status: ${project.id}`,
     `repo: ${project.githubRepo || "unknown"}`,
     `cwd: ${snapshot.cwd}`,
     ...snapshot.warnings.map((warning) => `warning: ${warning}`),

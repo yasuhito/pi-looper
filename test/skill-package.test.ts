@@ -6,7 +6,7 @@ const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
   files: string[];
   pi?: { skills?: string[] };
 };
-const skillText = readFileSync("skills/pi-looper/SKILL.md", "utf8");
+const skillText = readFileSync("skills/deadloop/SKILL.md", "utf8");
 
 describe("skills CLI compatibility package", () => {
   it("declares bundled Pi skills in the package manifest", () => {
@@ -18,10 +18,10 @@ describe("skills CLI compatibility package", () => {
   });
 
   it("provides Agent Skills frontmatter", () => {
-    expect(skillText).toMatch(/^---\nname: pi-looper\ndescription: .+\n---/);
+    expect(skillText).toMatch(/^---\nname: deadloop\ndescription: .+\n---/);
   });
 
   it("makes the Pi package activation step explicit", () => {
-    expect(skillText).toContain("pi install git:github.com/yasuhito/pi-looper");
+    expect(skillText).toContain("pi install git:github.com/yasuhito/deadloop");
   });
 });

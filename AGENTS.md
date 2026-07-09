@@ -2,9 +2,9 @@
 
 ## プロジェクトの目的
 
-`pi-looper` は、Pi 上で GitHub Issue の実装、PR レビュー、必要な修正、検証、マージまでの作業ループを回すための Pi パッケージ / 拡張です。
+`deadloop` は、GitHub Issue の実装、PR レビュー、必要な修正、検証、マージまでの作業ループを回すためのループエンジニアリングツールです。
 
-現在の標準実行基盤は Herdr ですが、長期的には Herdr 専用ツールではなく、実行基盤を差し替えられるループエンジニアリングツールとして育てます。
+現在の v0 は Pi パッケージ / 拡張として動き、標準実行基盤に Herdr を使います。長期的には Herdr 専用ツールではなく、実行基盤を差し替えられる形に育てます。旧称は `pi-looper` で、一部の内部パスや互換識別子には残します。
 
 ## 最初に読むもの
 
@@ -13,6 +13,7 @@
 - 全体像: `README.md`
 - Pi 拡張の実体: `extensions/pi-looper/README.md`
 - Herdr 実行基盤の役割: `docs/herdr-runner.md`
+- 改名境界: `docs/migration-to-deadloop.md`
 - パッケージ定義: `package.json`
 - 自動化プロンプト / 事前確認を触る場合: `extensions/pi-looper/automations/`
 
@@ -58,7 +59,6 @@ npm test
 npm run lint
 npm run typecheck
 bash -n extensions/pi-looper/automations/*.sh
-python3 -m py_compile extensions/pi-looper/automations/*.py
 npm pack --dry-run
 ```
 

@@ -3,13 +3,15 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
-const EXTENSION_NAME = "pi-looper";
+const EXTENSION_NAME = "deadloop";
+const LEGACY_EXTENSION_NAME = "pi-looper";
 const STATUS_KEY = EXTENSION_NAME;
 const TICK_MS = 30_000;
 const MODULE_LOAD_TIME_MS = Date.now();
 const {
   DEFAULT_TIMEZONE,
   REPO_POLICY_FILE,
+  LEGACY_REPO_POLICY_FILE,
   automationStateKey,
   codeFreshnessWarning,
   getDueSlot,
@@ -32,14 +34,18 @@ const { runScheduledAutomation } = require("../../src/automation-runner.ts");
 
 const CONFIG_DIR = process.env.PI_CODING_AGENT_DIR || path.join(os.homedir(), ".pi", "agent");
 const STATE_DIR = path.join(CONFIG_DIR, EXTENSION_NAME);
+const LEGACY_STATE_DIR = path.join(CONFIG_DIR, LEGACY_EXTENSION_NAME);
 const STATE_PATH = path.join(STATE_DIR, "state.json");
 
 function resolveExtensionDir() {
   const candidates = [
+    process.env.DEADLOOP_EXTENSION_DIR,
     process.env.PI_LOOPER_EXTENSION_DIR,
     __dirname,
     path.join(CONFIG_DIR, "extensions", EXTENSION_NAME),
+    path.join(CONFIG_DIR, "extensions", LEGACY_EXTENSION_NAME),
     path.join(os.homedir(), ".pi", "agent", "extensions", EXTENSION_NAME),
+    path.join(os.homedir(), ".pi", "agent", "extensions", LEGACY_EXTENSION_NAME),
   ].filter(Boolean);
   for (const candidate of candidates) {
     try {
@@ -58,6 +64,7 @@ const CODE_FRESHNESS_SOURCE_PATHS = [
 const CONFIG_PATH = resolveConfigPath({
   env: process.env,
   stateDir: STATE_DIR,
+  legacyStateDir: LEGACY_STATE_DIR,
   extensionDir: EXTENSION_DIR,
   exists: fs.existsSync,
   joinPath: path.join,
@@ -80,7 +87,7 @@ function writeJsonFile(file, value) {
 }
 
 function debugLog(...args) {
-  if (process.env.PI_LOOPER_DEBUG === "1") {
+  if (process.env.DEADLOOP_DEBUG === "1" || process.env.PI_LOOPER_DEBUG === "1") {
     console.warn(`[${EXTENSION_NAME}]`, ...args);
   }
 }
@@ -115,12 +122,14 @@ function trustedRepoPolicyProvider(project) {
 
   const show = gitSync(repoPath, ["show", `${baseBranch}:${REPO_POLICY_FILE}`], 10_000);
   if (show.status === 0) return { status: "loaded", text: show.stdout || "{}" };
+  const legacyShow = gitSync(repoPath, ["show", `${baseBranch}:${LEGACY_REPO_POLICY_FILE}`], 10_000);
+  if (legacyShow.status === 0) return { status: "loaded", text: legacyShow.stdout || "{}" };
   debugLog("trusted repo policy missing", repoPath, baseBranch, String(show.stderr || show.stdout || "").trim());
   return { status: "missing" };
 }
 
 function projectFilter() {
-  return process.env.PI_LOOPER_PROJECTS || "";
+  return process.env.DEADLOOP_PROJECTS || process.env.PI_LOOPER_PROJECTS || "";
 }
 
 function loadProjectsResult() {
@@ -593,30 +602,49 @@ async function runAutomation(pi, ctx, project, automation, dueSlot, state) {
   });
 }
 
-export default function (pi) {
-  pi.registerCommand("pi-looper-status", {
-    description: "Show the active pi-looper project, automations, GitHub queues, and Herdr worker worktrees",
+function registerReportCommand(pi, name, description, customType, buildReport) {
+  pi.registerCommand(name, {
+    description,
     handler: async (_args, ctx) => {
-      const report = await buildLiveStatusReport(pi, ctx.cwd);
+      const report = await buildReport(pi, ctx.cwd);
       if (ctx.mode === "print" || ctx.mode === "json") {
         console.log(report);
       } else {
-        pi.sendMessage({ customType: "pi-looper-status", content: report, display: true });
+        pi.sendMessage({ customType, content: report, display: true });
       }
     },
   });
+}
 
-  pi.registerCommand("pi-looper-doctor", {
-    description: "Diagnose known pi-looper failure modes and show copy-paste recovery or inspection commands",
-    handler: async (_args, ctx) => {
-      const report = await buildLiveDoctorReport(pi, ctx.cwd);
-      if (ctx.mode === "print" || ctx.mode === "json") {
-        console.log(report);
-      } else {
-        pi.sendMessage({ customType: "pi-looper-doctor", content: report, display: true });
-      }
-    },
-  });
+export default function (pi) {
+  registerReportCommand(
+    pi,
+    "deadloop-status",
+    "Show the active deadloop project, automations, GitHub queues, and Herdr worker worktrees",
+    "deadloop-status",
+    buildLiveStatusReport,
+  );
+  registerReportCommand(
+    pi,
+    "pi-looper-status",
+    "Compatibility alias for /deadloop-status",
+    "deadloop-status",
+    buildLiveStatusReport,
+  );
+  registerReportCommand(
+    pi,
+    "deadloop-doctor",
+    "Diagnose known deadloop failure modes and show copy-paste recovery or inspection commands",
+    "deadloop-doctor",
+    buildLiveDoctorReport,
+  );
+  registerReportCommand(
+    pi,
+    "pi-looper-doctor",
+    "Compatibility alias for /deadloop-doctor",
+    "deadloop-doctor",
+    buildLiveDoctorReport,
+  );
 
   let timer = null;
   let running = false;
@@ -687,7 +715,12 @@ export default function (pi) {
     const project = activeProject(ctx.cwd, projects);
     debugLog("session_start", "cwd", ctx.cwd, "mode", ctx.mode, "project", project?.id || null);
     if (!project) return;
-    if (process.env.PI_LOOPER === "off" || process.env.PI_LOOPER_AUTOMATIONS === "off") {
+    if (
+      process.env.DEADLOOP === "off" ||
+      process.env.DEADLOOP_AUTOMATIONS === "off" ||
+      process.env.PI_LOOPER === "off" ||
+      process.env.PI_LOOPER_AUTOMATIONS === "off"
+    ) {
       return;
     }
 

@@ -4,7 +4,8 @@ import { AGENT_KINDS, type AgentKind, isAgentKind } from "./agent-profiles.cjs";
 
 export const DEFAULT_TIMEZONE = "Asia/Tokyo";
 
-export const REPO_POLICY_FILE = "pi-looper.project.json";
+export const REPO_POLICY_FILE = "deadloop.project.json";
+export const LEGACY_REPO_POLICY_FILE = "pi-looper.project.json";
 
 export const DEFAULT_WORKER_INSTRUCTIONS = "AGENTS.md、CONTEXT.md、関連 docs/adr/ を読んでから作業する。";
 
@@ -147,6 +148,7 @@ export const EXTENSION_CODE_CHANGED_WARNING = "⚠ extension code changed since 
 export type ConfigPathOptions = {
   env?: Record<string, string | undefined>;
   stateDir: string;
+  legacyStateDir?: string;
   extensionDir: string;
   exists?: (path: string) => boolean;
   joinPath?: (...parts: string[]) => string;
@@ -165,11 +167,17 @@ export type CodeSourceMtime = {
 
 export function resolveConfigPath(options: ConfigPathOptions): string {
   const env = options.env || {};
+  if (env.DEADLOOP_CONFIG) return env.DEADLOOP_CONFIG;
   if (env.PI_LOOPER_CONFIG) return env.PI_LOOPER_CONFIG;
 
   const joinPath = options.joinPath || ((...parts: string[]) => parts.join("/"));
   const userConfigPath = joinPath(options.stateDir, "projects.json");
   if (options.exists?.(userConfigPath)) return userConfigPath;
+
+  if (options.legacyStateDir) {
+    const legacyUserConfigPath = joinPath(options.legacyStateDir, "projects.json");
+    if (options.exists?.(legacyUserConfigPath)) return legacyUserConfigPath;
+  }
 
   return joinPath(options.extensionDir, "projects.json");
 }

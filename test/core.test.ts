@@ -19,7 +19,18 @@ import {
 } from "../src/core";
 
 describe("deterministic extension core", () => {
-  it("uses PI_LOOPER_CONFIG before default config paths", () => {
+  it("uses DEADLOOP_CONFIG before legacy config env vars", () => {
+    expect(
+      resolveConfigPath({
+        env: { DEADLOOP_CONFIG: "/deadloop/projects.json", PI_LOOPER_CONFIG: "/legacy/projects.json" },
+        stateDir: "/state",
+        extensionDir: "/extension",
+        exists: () => true,
+      }),
+    ).toBe("/deadloop/projects.json");
+  });
+
+  it("keeps PI_LOOPER_CONFIG as a legacy config env var", () => {
     expect(
       resolveConfigPath({
         env: { PI_LOOPER_CONFIG: "/explicit/projects.json" },
@@ -30,7 +41,7 @@ describe("deterministic extension core", () => {
     ).toBe("/explicit/projects.json");
   });
 
-  it("uses the user state config before package-local config", () => {
+  it("uses the deadloop user state config before package-local config", () => {
     expect(
       resolveConfigPath({
         env: {},
@@ -39,6 +50,18 @@ describe("deterministic extension core", () => {
         exists: (value) => value === "/state/projects.json",
       }),
     ).toBe("/state/projects.json");
+  });
+
+  it("falls back to the legacy pi-looper user state config", () => {
+    expect(
+      resolveConfigPath({
+        env: {},
+        stateDir: "/state",
+        legacyStateDir: "/legacy-state",
+        extensionDir: "/extension",
+        exists: (value) => value === "/legacy-state/projects.json",
+      }),
+    ).toBe("/legacy-state/projects.json");
   });
 
   it("falls back to package-local config when user state config is missing", () => {

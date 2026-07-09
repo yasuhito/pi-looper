@@ -551,14 +551,14 @@ function formatConfigSource(project: NormalizedProject): string {
 export function formatDoctorReport(snapshot: DoctorSnapshot): string {
   if (!snapshot.project) {
     return [
-      `pi-looper doctor: no active project`,
+      `deadloop doctor: no active project`,
       `cwd: ${snapshot.cwd}`,
       ...snapshot.warnings.map((warning) => `warning: ${warning}`),
     ].join("\n");
   }
 
   const lines = [
-    `pi-looper doctor: ${snapshot.project.id}`,
+    `deadloop doctor: ${snapshot.project.id}`,
     `repo: ${snapshot.project.githubRepo || "unknown"}`,
     `cwd: ${snapshot.cwd}`,
     ...snapshot.warnings.map((warning) => `warning: ${warning}`),

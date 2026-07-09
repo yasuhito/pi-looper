@@ -18,9 +18,9 @@ function report(warnings: string[] = []) {
   );
 }
 
-describe("pi-looper status report", () => {
+describe("deadloop status report", () => {
   it("resolves the active project from the configured repository path", () => {
-    expect(resolveActiveProject("/home/yasuhito/Work/pi-looper/docs", projects)?.id).toBe("pi-looper");
+    expect(resolveActiveProject("/home/yasuhito/Work/deadloop/docs", projects)?.id).toBe("deadloop");
   });
 
   it("shows when there are no eligible issues", () => {
@@ -33,13 +33,13 @@ describe("pi-looper status report", () => {
 
   it("shows the cleanup candidate worktree", () => {
     expect(report()).toContain(
-      "- cleanup candidates: #20 agent/issue-12-old -> /home/yasuhito/Work/herdr-worktrees/pi-looper/agent-issue-12-old (workspace-20; merged_pr)",
+      "- cleanup candidates: #20 agent/issue-12-old -> /home/yasuhito/Work/herdr-worktrees/deadloop/agent-issue-12-old (workspace-20; merged_pr)",
     );
   });
 
   it("shows active Herdr worker worktrees with workspace ids", () => {
     expect(report()).toContain(
-      "agent/issue-13-add-pi-looper-status-report -> /home/yasuhito/Work/herdr-worktrees/pi-looper/agent-issue-13-add-pi-looper-status-report (workspace-13)",
+      "agent/issue-13-add-deadloop-status-report -> /home/yasuhito/Work/herdr-worktrees/deadloop/agent-issue-13-add-deadloop-status-report (workspace-13)",
     );
   });
 
@@ -52,6 +52,6 @@ describe("pi-looper status report", () => {
   });
 
   it("shows the layered config source", () => {
-    expect(report()).toContain("config: local=unknown local projects.json; repoPolicy=origin/main:pi-looper.project.json (not-read)");
+    expect(report()).toContain("config: local=unknown local projects.json; repoPolicy=origin/main:deadloop.project.json (not-read)");
   });
 });

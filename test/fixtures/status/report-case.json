@@ -1,24 +1,24 @@
 {
-  "cwd": "/home/yasuhito/Work/pi-looper",
+  "cwd": "/home/yasuhito/Work/deadloop",
   "nowMs": 1783209900000,
   "projects": [
     {
-      "id": "pi-looper",
+      "id": "deadloop",
       "enabled": true,
-      "repoPath": "/home/yasuhito/Work/pi-looper",
-      "githubRepo": "yasuhito/pi-looper",
+      "repoPath": "/home/yasuhito/Work/deadloop",
+      "githubRepo": "yasuhito/deadloop",
       "baseBranch": "origin/main",
-      "worktreeRoot": "/home/yasuhito/Work/herdr-worktrees/pi-looper",
+      "worktreeRoot": "/home/yasuhito/Work/herdr-worktrees/deadloop",
       "autoMerge": false,
       "automations": [
         {
-          "id": "pi-looper:issue-coordinator",
-          "name": "pi-looper issue coordinator",
+          "id": "deadloop:issue-coordinator",
+          "name": "deadloop issue coordinator",
           "schedule": "*/10 * * * *"
         },
         {
-          "id": "pi-looper:pr-reviewer",
-          "name": "pi-looper PR reviewer",
+          "id": "deadloop:pr-reviewer",
+          "name": "deadloop PR reviewer",
           "schedule": "*/10 * * * *"
         }
       ]
@@ -26,7 +26,7 @@
   ],
   "state": {
     "automations": {
-      "pi-looper:pi-looper:issue-coordinator": {
+      "deadloop:deadloop:issue-coordinator": {
         "lastScheduledAt": 1783209000000,
         "lastResult": "queued",
         "lastSummary": "driver selected Issue #12"
@@ -36,7 +36,7 @@
   "issues": [
     {
       "number": 13,
-      "title": "Add pi-looper status report",
+      "title": "Add deadloop status report",
       "labels": [{ "name": "agent:in-progress" }]
     }
   ],
@@ -60,23 +60,23 @@
   "worktrees": [
     {
       "branch": "agent/issue-12-old",
-      "path": "/home/yasuhito/Work/herdr-worktrees/pi-looper/agent-issue-12-old",
+      "path": "/home/yasuhito/Work/herdr-worktrees/deadloop/agent-issue-12-old",
       "open_workspace_id": "workspace-20",
       "is_linked_worktree": true
     },
     {
-      "branch": "agent/issue-13-add-pi-looper-status-report",
-      "path": "/home/yasuhito/Work/herdr-worktrees/pi-looper/agent-issue-13-add-pi-looper-status-report",
+      "branch": "agent/issue-13-add-deadloop-status-report",
+      "path": "/home/yasuhito/Work/herdr-worktrees/deadloop/agent-issue-13-add-deadloop-status-report",
       "open_workspace_id": "workspace-13",
       "is_linked_worktree": true
     }
   ],
   "gitStatuses": {
-    "/home/yasuhito/Work/herdr-worktrees/pi-looper/agent-issue-12-old": "",
-    "/home/yasuhito/Work/herdr-worktrees/pi-looper/agent-issue-13-add-pi-looper-status-report": " M src/status.ts"
+    "/home/yasuhito/Work/herdr-worktrees/deadloop/agent-issue-12-old": "",
+    "/home/yasuhito/Work/herdr-worktrees/deadloop/agent-issue-13-add-deadloop-status-report": " M src/status.ts"
   },
   "gitHeads": {
-    "/home/yasuhito/Work/herdr-worktrees/pi-looper/agent-issue-12-old": "abc123",
-    "/home/yasuhito/Work/herdr-worktrees/pi-looper/agent-issue-13-add-pi-looper-status-report": "def456"
+    "/home/yasuhito/Work/herdr-worktrees/deadloop/agent-issue-12-old": "abc123",
+    "/home/yasuhito/Work/herdr-worktrees/deadloop/agent-issue-13-add-deadloop-status-report": "def456"
   }
 }

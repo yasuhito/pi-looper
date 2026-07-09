@@ -115,7 +115,7 @@ async function runConfiguredDriver(
   const driver = deps.resolveAutomationFileInDir("driver", automation, automation.driverFile);
   if (!driver.found) {
     recordDriverFailure(entry, "driver_file_missing", `driver file not found: ${automation.driverFile}`, deps, state);
-    deps.notify?.(`pi-looper driver file missing: ${automation.name}`, "warning");
+    deps.notify?.(`deadloop driver file missing: ${automation.name}`, "warning");
     return true;
   }
 
@@ -124,7 +124,7 @@ async function runConfiguredDriver(
     result = await deps.runDriver(project, automation, driver.resolved);
   } catch (error) {
     recordDriverFailure(entry, "driver_error", error instanceof Error ? error.message : String(error), deps, state);
-    deps.notify?.(`pi-looper driver failed: ${automation.name}`, "warning");
+    deps.notify?.(`deadloop driver failed: ${automation.name}`, "warning");
     return true;
   }
 
@@ -136,14 +136,14 @@ async function runConfiguredDriver(
       deps,
       state,
     );
-    deps.notify?.(`pi-looper driver failed: ${automation.name}`, "warning");
+    deps.notify?.(`deadloop driver failed: ${automation.name}`, "warning");
     return true;
   }
 
   const payload = parseDriverPayload(result.stdout || "");
   if (!payload) {
     recordDriverFailure(entry, "driver_invalid_json", "driver did not return a JSON object", deps, state);
-    deps.notify?.(`pi-looper driver returned invalid JSON: ${automation.name}`, "warning");
+    deps.notify?.(`deadloop driver returned invalid JSON: ${automation.name}`, "warning");
     return true;
   }
 
@@ -177,7 +177,7 @@ async function runConfiguredDriver(
         deps,
         state,
       );
-      deps.notify?.(`pi-looper driver returned invalid result: ${automation.name}`, "warning");
+      deps.notify?.(`deadloop driver returned invalid result: ${automation.name}`, "warning");
       return true;
     }
     try {
@@ -186,13 +186,13 @@ async function runConfiguredDriver(
       entry.lastQueuedAt = deps.now();
       entry.updatedAt = deps.now();
       deps.saveState(state);
-      deps.notify?.(`pi-looper queued driver prompt: ${automation.name}`, "info");
+      deps.notify?.(`deadloop queued driver prompt: ${automation.name}`, "info");
     } catch (error) {
       recordAutomationResult(entry, "send_error");
       entry.lastError = error instanceof Error ? error.message : String(error);
       entry.updatedAt = deps.now();
       deps.saveState(state);
-      deps.notify?.(`pi-looper send failed: ${automation.name}`, "error");
+      deps.notify?.(`deadloop send failed: ${automation.name}`, "error");
     }
     return true;
   }
@@ -205,7 +205,7 @@ async function runConfiguredDriver(
       deps,
       state,
     );
-    deps.notify?.(`pi-looper driver reported error: ${automation.name}`, "warning");
+    deps.notify?.(`deadloop driver reported error: ${automation.name}`, "warning");
     return true;
   }
 
@@ -216,7 +216,7 @@ async function runConfiguredDriver(
     deps,
     state,
   );
-  deps.notify?.(`pi-looper driver returned invalid result: ${automation.name}`, "warning");
+  deps.notify?.(`deadloop driver returned invalid result: ${automation.name}`, "warning");
   return true;
 }
 
@@ -245,7 +245,7 @@ export async function runScheduledAutomation(
     entry.lastError = `precheck file not found: ${automation.precheckFile}`;
     entry.updatedAt = deps.now();
     deps.saveState(state);
-    deps.notify?.(`pi-looper precheck file missing: ${automation.name}`, "warning");
+    deps.notify?.(`deadloop precheck file missing: ${automation.name}`, "warning");
     return;
   }
 
@@ -259,7 +259,7 @@ export async function runScheduledAutomation(
     entry.lastError = error instanceof Error ? error.message : String(error);
     entry.updatedAt = deps.now();
     deps.saveState(state);
-    deps.notify?.(`pi-looper precheck failed: ${automation.name}`, "warning");
+    deps.notify?.(`deadloop precheck failed: ${automation.name}`, "warning");
     return;
   }
 
@@ -286,7 +286,7 @@ export async function runScheduledAutomation(
     entry.lastError = `prompt file not found: ${automation.promptFile}`;
     entry.updatedAt = deps.now();
     deps.saveState(state);
-    deps.notify?.(`pi-looper prompt file missing: ${automation.name}`, "warning");
+    deps.notify?.(`deadloop prompt file missing: ${automation.name}`, "warning");
     return;
   }
 
@@ -297,12 +297,12 @@ export async function runScheduledAutomation(
     entry.lastQueuedAt = deps.now();
     entry.updatedAt = deps.now();
     deps.saveState(state);
-    deps.notify?.(`pi-looper queued: ${automation.name}`, "info");
+    deps.notify?.(`deadloop queued: ${automation.name}`, "info");
   } catch (error) {
     recordAutomationResult(entry, "send_error");
     entry.lastError = error instanceof Error ? error.message : String(error);
     entry.updatedAt = deps.now();
     deps.saveState(state);
-    deps.notify?.(`pi-looper send failed: ${automation.name}`, "error");
+    deps.notify?.(`deadloop send failed: ${automation.name}`, "error");
   }
 }

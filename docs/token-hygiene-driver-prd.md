@@ -2,7 +2,7 @@
 
 ## Problem
 
-pi-looper currently sends large automation prompts into the long-lived Pi session whenever an automation becomes due. The current prompt files are large (`issue-coordinator.prompt.md` is roughly 14.6k characters and `pr-reviewer.prompt.md` is roughly 23.7k characters), and repeated scheduled runs can accumulate old automation history in the same context window.
+deadloop currently sends large automation prompts into the long-lived Pi session whenever an automation becomes due. The current prompt files are large (`issue-coordinator.prompt.md` is roughly 14.6k characters and `pr-reviewer.prompt.md` is roughly 23.7k characters), and repeated scheduled runs can accumulate old automation history in the same context window.
 
 This wastes tokens and makes orchestration quality dependent on a large natural-language procedure. It also conflicts with the project direction: deterministic decisions should live in scripts or TypeScript functions, while LLM prompts should handle only ambiguous judgment and language synthesis.
 
@@ -30,7 +30,7 @@ Add a deterministic automation driver seam. A scheduled automation may run a dri
 - `needs_llm`: send a short, generated prompt with bounded evidence.
 - `error`: record failure and surface a concise operator summary.
 
-This seam lets pi-looper keep the extension scheduler small while pushing workflow-specific behavior into scripts with focused tests.
+This seam lets deadloop keep the extension scheduler small while pushing workflow-specific behavior into scripts with focused tests.
 
 ## Rollout plan
 
@@ -60,10 +60,10 @@ Follow-up driver work should continue lowering these budgets as deterministic wo
 
 ## Implementation issues
 
-The GitHub issues created from this PRD are intentionally not labeled `agent:implement` by default. Add that label when a human is ready to let pi-looper pick up a specific slice.
+The GitHub issues created from this PRD are intentionally not labeled `agent:implement` by default. Add that label when a human is ready to let deadloop pick up a specific slice.
 
-- [#70](https://github.com/yasuhito/pi-looper/issues/70) Add prompt budget tests for automation token hygiene
-- [#71](https://github.com/yasuhito/pi-looper/issues/71) Add deterministic automation driver seam to the scheduler
-- [#72](https://github.com/yasuhito/pi-looper/issues/72) Extract issue-coordinator blocked-comment and worker-prompt renderers
-- [#73](https://github.com/yasuhito/pi-looper/issues/73) Implement deterministic issue-coordinator driver and shrink front prompt
-- [#74](https://github.com/yasuhito/pi-looper/issues/74) Reduce PR reviewer prompt with deterministic driver slices
+- [#70](https://github.com/yasuhito/deadloop/issues/70) Add prompt budget tests for automation token hygiene
+- [#71](https://github.com/yasuhito/deadloop/issues/71) Add deterministic automation driver seam to the scheduler
+- [#72](https://github.com/yasuhito/deadloop/issues/72) Extract issue-coordinator blocked-comment and worker-prompt renderers
+- [#73](https://github.com/yasuhito/deadloop/issues/73) Implement deterministic issue-coordinator driver and shrink front prompt
+- [#74](https://github.com/yasuhito/deadloop/issues/74) Reduce PR reviewer prompt with deterministic driver slices

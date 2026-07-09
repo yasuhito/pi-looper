@@ -56,7 +56,7 @@ function claudeSnapshot(overrides: Partial<Parameters<typeof buildDoctorSnapshot
   return snapshot({ projects: [claudeProject], ...overrides });
 }
 
-describe("pi-looper doctor", () => {
+describe("deadloop doctor", () => {
   it("reports the blocked issue requeue command", () => {
     const result = snapshot({ issues: [{ number: 1, labels: ["agent:blocked"] }] });
 
@@ -281,6 +281,6 @@ describe("pi-looper doctor", () => {
   it("prints the layered config source", () => {
     const report = formatDoctorReport(snapshot());
 
-    expect(report).toContain("config: local=unknown local projects.json; repoPolicy=origin/main:pi-looper.project.json (not-read)");
+    expect(report).toContain("config: local=unknown local projects.json; repoPolicy=origin/main:deadloop.project.json (not-read)");
   });
 });

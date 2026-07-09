@@ -1,8 +1,8 @@
 {
-  "name": "pi-looper",
+  "name": "deadloop",
   "version": "0.1.0",
-  "description": "Pi extension that loops GitHub issue implementation and PR review workflows. The initial runner uses Herdr.",
-  "keywords": ["pi-package", "pi-extension", "agent", "github", "herdr"],
+  "description": "deadloop runs guarded GitHub issue-to-PR automation loops for coding agents. The v0 Pi package uses Herdr.",
+  "keywords": ["pi-package", "pi-extension", "agent", "github", "herdr", "deadloop"],
   "license": "MIT",
   "type": "commonjs",
   "scripts": {

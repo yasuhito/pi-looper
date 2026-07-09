@@ -3,12 +3,22 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
+  name: string;
+  description: string;
   devDependencies: Record<string, string>;
   files: string[];
   scripts: Record<string, string>;
 };
 
 describe("package manifest files", () => {
+  it("uses the deadloop package name", () => {
+    expect(packageJson.name).toBe("deadloop");
+  });
+
+  it("describes the public product name", () => {
+    expect(packageJson.description).toContain("deadloop");
+  });
+
   it("defines a local lint command", () => {
     expect(packageJson.scripts.lint).toBe(
       "biome check package.json biome.json test/ci-workflow.test.ts test/package-manifest.test.ts tsconfig.json --files-ignore-unknown=true && biome lint src extensions/pi-looper/index.ts extensions/pi-looper/automations/*.ts test/*.ts --files-ignore-unknown=true",

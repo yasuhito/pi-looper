@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
@@ -18,6 +18,7 @@ function trackedContent() {
     .split("\n")
     .filter((file) => file.length > 0)
     .filter((file) => !file.endsWith(".png"))
+    .filter((file) => existsSync(file))
     .map((file) => readFileSync(file, "utf8"))
     .join("\n");
 }
