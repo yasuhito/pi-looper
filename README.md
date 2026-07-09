@@ -8,8 +8,6 @@
 - The default runner is [Herdr](https://herdr.dev/).
 - The public name, package name, commands, config paths, and environment variables are **deadloop**.
 
-See [docs/migration-to-deadloop.md](docs/migration-to-deadloop.md) for the rename boundary.
-
 ## Safety first
 
 Install only from source you trust. deadloop can write GitHub Issue / PR comments, change labels, create PRs, and, when `autoMerge: true` is explicitly enabled, squash-merge PRs and delete head branches.
@@ -90,8 +88,8 @@ An issue is eligible only when it has both `ready-for-agent` and `agent:implemen
 
 ## Roll out in phases
 
-1. **Issue coordination only** — enable `issue-coordinator`; humans still review and merge PRs.
-2. **Automated PR review** — add `pr-reviewer` with `autoMerge: false`; reviewed PRs hand off to `ready-for-human`.
+1. **Issue coordination only** — start here if you want a slow rollout; humans still review and merge PRs.
+2. **Automated PR review** — use the standard PR reviewer with `autoMerge: false`; reviewed PRs hand off to `ready-for-human`.
 3. **Optional auto-merge** — consider `autoMerge: true` only after branch protection, CI, review expectations, dry-run/manual approval practices, and stop conditions are proven.
 
 ## Run
@@ -122,11 +120,8 @@ DEADLOOP_DEBUG=1 pi
 
 ## Documentation
 
-- First-time setup: [docs/public-package-setup.md](docs/public-package-setup.md)
-- Rename migration: [docs/migration-to-deadloop.md](docs/migration-to-deadloop.md)
+- Setup guide: [docs/public-package-setup.md](docs/public-package-setup.md)
 - Herdr runner details: [docs/herdr-runner.md](docs/herdr-runner.md)
-- Dogfooding notes: [docs/dogfooding.md](docs/dogfooding.md)
-- Token hygiene / deterministic driver plan: [docs/token-hygiene-driver-prd.md](docs/token-hygiene-driver-prd.md)
 
 ## Verify this repository
 
