@@ -5,12 +5,7 @@
 const fs = require("node:fs") as typeof import("node:fs");
 const { randomUUID } = require("node:crypto") as typeof import("node:crypto");
 const { spawnSync } = require("node:child_process") as typeof import("node:child_process");
-const {
-  defaultDecisionConfig,
-  externalReviewGate: decideExternalReviewGate,
-  selectPrForReview,
-  workingReviewerPrNumbers,
-} = require("./pr-reviewer-decisions.ts");
+const { planPrReviewerAction } = require("./pr-reviewer-flow.ts");
 const { launchAgentFlow } = require("../../../src/agent-launch-flow.ts");
 const { herdrAgentListCommand } = require("../../../src/herdr-adapter.ts");
 
@@ -111,39 +106,6 @@ function liveAgents(): any {
   }
 }
 
-function decisionConfig(env: ReturnType<typeof envConfig>): JsonObject {
-  const externalReviewWaitSeconds = Number(env.externalReviewWaitSeconds || 1800);
-  if (!Number.isFinite(externalReviewWaitSeconds) || externalReviewWaitSeconds < 0) {
-    throw new Error("DEADLOOP_EXTERNAL_REVIEW_WAIT_SECONDS must be a non-negative number");
-  }
-  if (env.now && !/^\d{4}-\d{2}-\d{2}T/.test(env.now)) throw new Error("DEADLOOP_NOW must be an ISO-8601 timestamp");
-  const now = env.now ? new Date(env.now) : new Date();
-  if (Number.isNaN(now.getTime())) throw new Error("DEADLOOP_NOW must be an ISO-8601 timestamp");
-  return defaultDecisionConfig({
-    reviewLabel: env.reviewLabel,
-    reviewingLabel: env.reviewingLabel,
-    humanLabel: env.humanLabel,
-    blockedLabel: env.blockedLabel,
-    autoMerge: env.autoMerge,
-    externalReviewWaitSeconds,
-    projectId: env.projectId,
-    now,
-  });
-}
-
-function selectDecision(prs: JsonObject[], agents: any, env: ReturnType<typeof envConfig>): JsonObject {
-  const config = decisionConfig(env);
-  return selectPrForReview(prs, config, workingReviewerPrNumbers(agents, env.projectId));
-}
-
-function externalReviewGate(pr: JsonObject, env: ReturnType<typeof envConfig>): JsonObject {
-  return decideExternalReviewGate(pr, decisionConfig(env));
-}
-
-function selectedPr(prs: JsonObject[], number: number): JsonObject {
-  return prs.find((pr) => Number(pr.number) === number) || { number };
-}
-
 function shouldSimulateLaunch(fixture: JsonObject | null, env: ReturnType<typeof envConfig>): boolean {
   return Boolean(fixture && env.simulateLaunch);
 }
@@ -242,11 +204,6 @@ function launchPrReviewer(pr: JsonObject, env: ReturnType<typeof envConfig>, fix
   return { reviewerName, headRefName, ...launch };
 }
 
-function hasSkippedReason(decision: JsonObject, reasons: string[]): boolean {
-  const wanted = new Set(reasons);
-  return (decision.skipped || []).some((entry: JsonObject) => wanted.has(String(entry.reason || "")));
-}
-
 function draftBlockedComment(pr: JsonObject, env: ReturnType<typeof envConfig>): string {
   const number = Number(pr.number || 0);
   const headRefName = oneLine(pr.headRefName || "<headRefName>");
@@ -340,43 +297,40 @@ function drive(fixturePath: string | undefined): DriverResult {
 
   const prs = fixture ? fixture.prs || [] : livePrs(env.githubRepo);
   const agents = fixture ? fixture.agents || { result: { agents: [] } } : liveAgents();
-  const decision = selectDecision(prs, agents, env);
+  const plan = planPrReviewerAction(prs, agents, env);
 
-  if (!decision.selected) {
-    const driverAction = hasSkippedReason(decision, ["pending_checks", "external_review_wait"]) ? "wait" : "no_candidate";
-    const summary = driverAction === "wait" ? "PR reviewer is waiting for checks or external review" : "No target PR";
-    return driverResult("skip", summary, { driverAction, decision });
+  if (plan.kind === "skip_no_candidate" || plan.kind === "skip_wait") {
+    return driverResult("skip", plan.summary, { driverAction: plan.driverAction, decision: plan.decision });
   }
 
-  const pr = selectedPr(prs, Number(decision.number));
-  if (decision.action === "draft_gate") {
-    const comment = draftBlockedComment(pr, env);
-    applyDraftGate(pr, env, fixture, comment);
-    return driverResult("done", `PR #${decision.number} is draft; marked blocked`, {
+  if (plan.kind === "draft_gate") {
+    const comment = draftBlockedComment(plan.pr, env);
+    applyDraftGate(plan.pr, env, fixture, comment);
+    return driverResult("done", `PR #${plan.decision.number} is draft; marked blocked`, {
       driverAction: "draft_blocked",
-      prNumber: decision.number,
+      prNumber: plan.decision.number,
       comment,
     });
   }
 
-  const gate = externalReviewGate(pr, env);
-  if (gate.action === "request_external_review") {
-    applyExternalReviewRequest(pr, env, fixture);
-    return driverResult("done", `Requested external review for PR #${decision.number}`, {
+  if (plan.kind === "external_review_request") {
+    applyExternalReviewRequest(plan.pr, env, fixture);
+    return driverResult("done", `Requested external review for PR #${plan.decision.number}`, {
       driverAction: "external_review_requested",
-      prNumber: decision.number,
-      gate,
+      prNumber: plan.decision.number,
+      gate: plan.gate,
     });
   }
-  if (gate.action === "wait_external_review") {
-    return driverResult("skip", `Waiting for external review on PR #${decision.number}`, {
+  if (plan.kind === "external_review_wait") {
+    return driverResult("skip", `Waiting for external review on PR #${plan.decision.number}`, {
       driverAction: "wait",
-      prNumber: decision.number,
-      gate,
+      prNumber: plan.decision.number,
+      gate: plan.gate,
     });
   }
 
-  const reason = String(gate.reason || decision.reason || "review_required");
+  const { pr, gate, reason } = plan;
+  const decision = plan.decision;
   if (shouldDirectLaunch(fixture, env)) {
     const launch = launchPrReviewer(pr, env, fixture, reason);
     return driverResult("needs_llm", `Launched reviewer agent for PR #${decision.number}`, {
