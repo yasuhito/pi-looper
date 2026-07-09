@@ -45,7 +45,6 @@ function envConfig() {
     autoMerge: parseBool(process.env.DEADLOOP_AUTO_MERGE),
     externalReviewWaitSeconds: process.env.DEADLOOP_EXTERNAL_REVIEW_WAIT_SECONDS || "1800",
     now: process.env.DEADLOOP_NOW || "",
-    simulateLaunch: process.env.DEADLOOP_SIMULATE_LAUNCH === "1",
   };
 }
 
@@ -73,12 +72,8 @@ function liveAgents(): any {
   }
 }
 
-function shouldSimulateLaunch(fixture: JsonObject | null, env: ReturnType<typeof envConfig>): boolean {
-  return Boolean(fixture && env.simulateLaunch);
-}
-
-function shouldDirectLaunch(fixture: JsonObject | null, env: ReturnType<typeof envConfig>): boolean {
-  return fixture ? shouldSimulateLaunch(fixture, env) : true;
+function shouldSimulateLaunch(fixture: JsonObject | null): boolean {
+  return Boolean(fixture);
 }
 
 function reviewerMonitorPrompt(pr: JsonObject, env: ReturnType<typeof envConfig>, launch: JsonObject): string {
@@ -134,12 +129,12 @@ Promise report:
 
 function launchPrReviewer(pr: JsonObject, env: ReturnType<typeof envConfig>, fixture: JsonObject | null, reason: string): JsonObject {
   const number = Number(pr.number || 0);
-  const uuid = shouldSimulateLaunch(fixture, env) ? "fixture-reviewer-uuid" : randomUUID();
+  const uuid = shouldSimulateLaunch(fixture) ? "fixture-reviewer-uuid" : randomUUID();
   const reviewerName = `${env.projectId}-pr-${number}-reviewer`;
   const headRefName = String(pr.headRefName || `pr-${number}`);
   const simulatedWorktreePath = `/worktrees/${env.projectId}/${headRefName.replace(/\//g, "-")}`;
 
-  if (shouldSimulateLaunch(fixture, env)) {
+  if (shouldSimulateLaunch(fixture)) {
     return {
       reviewerName,
       headRefName,
@@ -232,31 +227,6 @@ function applyExternalReviewRequest(pr: JsonObject, env: ReturnType<typeof envCo
   runText(["gh", "pr", "edit", number, "-R", env.githubRepo, "--remove-label", env.reviewingLabel], { check: false });
 }
 
-function reviewPrompt(pr: JsonObject, env: ReturnType<typeof envConfig>, reason: string): string {
-  const number = Number(pr.number || 0);
-  const title = oneLine(pr.title || "PR review");
-  const reviewerName = `${env.projectId}-pr-${number}-reviewer`;
-  return `Deterministic PR reviewer driver selected PR #${number}. Continue only this bounded review path; do not reselect another PR.
-
-Target:
-- GitHub repo: ${env.githubRepo}
-- PR: #${number} ${title}
-- PR URL: ${pr.url || `https://github.com/${env.githubRepo}/pull/${number}`}
-- Reason: ${reason}
-- autoMerge=${env.autoMerge ? "true" : "false"}; if autoMerge=false, do not merge. Hand off to ${env.humanLabel} after review/verification.
-
-Required safety contract:
-- Claim with ${env.reviewingLabel} before launching review work unless already claimed by stale reclaim.
-- Use reviewer name ${reviewerName}; never use the default pi name.
-- Prepare a PR branch Herdr worktree; do not edit the main workspace ${env.repoPath}.
-- Create a dedicated tab before launch: herdr tab create --workspace <workspaceId> --cwd <worktreePath> --label "${reviewerName}" --no-focus.
-- Launch only through node ${env.automationDir}/launch-agent.ts --agent "${env.reviewerAgent}" --name "$reviewer_name" --cwd "$worktree_path" --repo-path ${shellQuote(env.repoPath)} --level "$level" --model "${env.reviewerModel}" --uuid "$uuid" --prompt-file "$prompt_file" --tab "$tab_id".
-- The promise file is the only completion authority. When complete or blocked appears, break polling immediately.
-- Preserve external review, CI fallback, local verification, and auto-merge safety rules from the project documentation.
-
-Report only the resulting action and evidence.`;
-}
-
 function drive(fixturePath: string | undefined): DriverResult {
   const fixture = loadFixture(fixturePath);
   const env = envConfig();
@@ -298,22 +268,13 @@ function drive(fixturePath: string | undefined): DriverResult {
 
   const { pr, gate, reason } = plan;
   const decision = plan.decision;
-  if (shouldDirectLaunch(fixture, env)) {
-    const launch = launchPrReviewer(pr, env, fixture, reason);
-    return driverResult("needs_llm", `Launched reviewer agent for PR #${decision.number}`, {
-      driverAction: "reviewer_monitor_request",
-      prNumber: decision.number,
-      gate,
-      launch,
-      prompt: reviewerMonitorPrompt(pr, env, launch),
-    });
-  }
-
-  return driverResult("needs_llm", `PR #${decision.number} needs review agent work`, {
-    driverAction: "reviewer_launch_request",
+  const launch = launchPrReviewer(pr, env, fixture, reason);
+  return driverResult("needs_llm", `Launched reviewer agent for PR #${decision.number}`, {
+    driverAction: "reviewer_monitor_request",
     prNumber: decision.number,
     gate,
-    prompt: reviewPrompt(pr, env, reason),
+    launch,
+    prompt: reviewerMonitorPrompt(pr, env, launch),
   });
 }
 

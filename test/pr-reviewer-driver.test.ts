@@ -48,33 +48,27 @@ describe("PR reviewer deterministic driver", () => {
     expect(runDriverFixture("draft-pr.json").comment).toContain("## Recovery steps");
   });
 
-  it("delegates stale external-review fallback to a bounded review prompt", () => {
-    expect(runDriverFixture("fallback-review.json").action).toBe("needs_llm");
-  });
-
-  it("can launch reviewers deterministically before asking for monitoring", () => {
-    expect(runDriverFixture("fallback-review.json", { DEADLOOP_SIMULATE_LAUNCH: "1" }).driverAction).toBe(
-      "reviewer_monitor_request",
-    );
+  it("launches stale external-review fallback deterministically before monitoring", () => {
+    expect(runDriverFixture("fallback-review.json").driverAction).toBe("reviewer_monitor_request");
   });
 
   it("reports the deterministic reviewer promise path", () => {
-    expect(runDriverFixture("fallback-review.json", { DEADLOOP_SIMULATE_LAUNCH: "1" }).launch.promiseFile).toContain(
+    expect(runDriverFixture("fallback-review.json").launch.promiseFile).toContain(
       ".deadloop/promise-",
     );
   });
 
   it("preserves autoMerge=false safety after deterministic reviewer launch", () => {
-    expect(runDriverFixture("fallback-review.json", { DEADLOOP_SIMULATE_LAUNCH: "1" }).prompt).toContain(
+    expect(runDriverFixture("fallback-review.json").prompt).toContain(
       "If autoMerge=false, never merge",
     );
   });
 
-  it("keeps review delegation on launch-agent", () => {
-    expect(runDriverFixture("fallback-review.json").prompt).toContain("launch-agent.ts");
+  it("does not ask the LLM to run launch-agent", () => {
+    expect(runDriverFixture("fallback-review.json").prompt).not.toContain("launch-agent.ts");
   });
 
-  it("keeps autoMerge=false handoff explicit", () => {
-    expect(runDriverFixture("fallback-review.json").prompt).toContain("autoMerge=false");
+  it("reports the deterministic reviewer name", () => {
+    expect(runDriverFixture("fallback-review.json").launch.reviewerName).toBe("demo-pr-24-reviewer");
   });
 });

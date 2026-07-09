@@ -30,8 +30,8 @@ describe("watch polling break instruction", () => {
     expect(promptTemplate("pr-reviewer.prompt.md")).toMatch(/Break polling immediately/);
   });
 
-  it("shows issue-coordinator watch a break-early loop example", () => {
-    expect(issueCoordinatorWorkerPrompt()).toMatch(/complete\|blocked\) break/);
+  it("shows issue-coordinator watch a break-early instruction", () => {
+    expect(issueCoordinatorWorkerPrompt()).toMatch(/complete.*blocked.*break/s);
   });
 
   it("shows pr-reviewer watch a break-early loop example", () => {

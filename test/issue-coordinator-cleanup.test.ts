@@ -133,18 +133,16 @@ describe("issue coordinator cleanup", () => {
     expect(runIssuePrecheckWithCleanupCandidate()).toBe(0);
   });
 
-  it("passes a unique worker agent name to the launcher", () => {
-    expect(runDriverFixture("driver-ready-worker.json").prompt).toContain('--name "$worker_name"');
+  it("passes a unique worker agent name to deterministic launch", () => {
+    expect(runDriverFixture("driver-ready-worker.json").launch.workerName).toBe("demo-issue-12-worker");
   });
 
-  it("creates a dedicated tab before starting a worker", () => {
-    expect(runDriverFixture("driver-ready-worker.json").prompt).toContain(
-      'herdr tab create --workspace <workspaceId> --cwd <worktreePath> --label "demo-issue-12-worker" --no-focus',
-    );
+  it("creates a dedicated tab before monitoring a worker", () => {
+    expect(runDriverFixture("driver-ready-worker.json").launch.tabId).toBe("fixture-tab");
   });
 
-  it("forwards the dedicated tab to the launcher for workers", () => {
-    expect(runDriverFixture("driver-ready-worker.json").prompt).toContain('--tab "$tab_id"');
+  it("keeps worker launch out of the monitoring prompt", () => {
+    expect(runDriverFixture("driver-ready-worker.json").prompt).not.toContain("launch-agent.ts");
   });
 
   it("does not document workspace split startup for workers", () => {
@@ -173,8 +171,8 @@ describe("issue coordinator cleanup", () => {
   // positional prompt) now live in the launcher and are covered by
   // test/agent-profiles.test.ts. The coordinator keeps only the uuid coupling:
   // the same uuid names the promise file and is handed to the launcher.
-  it("hands the shared session uuid to the launcher", () => {
-    expect(runDriverFixture("driver-ready-worker.json").prompt).toContain('--uuid "$uuid"');
+  it("hands the shared session uuid to the promise path", () => {
+    expect(runDriverFixture("driver-ready-worker.json").launch.promiseFile).toContain("fixture-worker-uuid");
   });
 
   it("keeps the promise file as the worker completion authority", () => {

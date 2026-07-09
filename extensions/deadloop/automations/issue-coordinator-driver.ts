@@ -13,9 +13,7 @@ const {
   createHerdrRunnerFromCommandRunner,
   driverResult,
   loadFixture,
-  oneLine,
   parseFixtureArg,
-  shellQuote,
 } = require("../../../src/automation-driver-kit.ts");
 
 import type { DriverResult, JsonObject } from "../../../src/automation-driver-kit";
@@ -106,12 +104,8 @@ function slugForBranch(value: unknown): string {
   return slug || "task";
 }
 
-function shouldSimulateLaunch(fixture: JsonObject | null, env: ReturnType<typeof envConfig>): boolean {
-  return Boolean(fixture && env.simulateLaunch);
-}
-
-function shouldDirectLaunch(fixture: JsonObject | null, env: ReturnType<typeof envConfig>): boolean {
-  return fixture ? shouldSimulateLaunch(fixture, env) : true;
+function shouldSimulateLaunch(fixture: JsonObject | null): boolean {
+  return Boolean(fixture);
 }
 
 function issueMonitorPrompt(issue: JsonObject, env: ReturnType<typeof envConfig>, launch: JsonObject): string {
@@ -141,12 +135,12 @@ Report only the resulting action and evidence.`;
 
 function launchIssueWorker(issue: JsonObject, env: ReturnType<typeof envConfig>, fixture: JsonObject | null): JsonObject {
   const number = Number(issue.number || 0);
-  const uuid = shouldSimulateLaunch(fixture, env) ? "fixture-worker-uuid" : randomUUID();
+  const uuid = shouldSimulateLaunch(fixture) ? "fixture-worker-uuid" : randomUUID();
   const workerName = `${env.projectId}-issue-${number}-worker`;
   const branch = `agent/issue-${number}-${slugForBranch(issue.title)}`;
   const simulatedWorktreePath = `/worktrees/${env.projectId}/${branch.replace(/\//g, "-")}`;
 
-  if (shouldSimulateLaunch(fixture, env)) {
+  if (shouldSimulateLaunch(fixture)) {
     return {
       workerName,
       branch,
@@ -188,30 +182,6 @@ function launchIssueWorker(issue: JsonObject, env: ReturnType<typeof envConfig>,
   return { workerName, branch, ...launch };
 }
 
-function workerLaunchPrompt(issue: JsonObject, env: ReturnType<typeof envConfig>): string {
-  const number = Number(issue.number || 0);
-  const title = oneLine(issue.title || "task");
-  const url = String(issue.url || `https://github.com/${env.githubRepo}/issues/${number}`);
-  const workerName = `${env.projectId}-issue-${number}-worker`;
-  return `Deterministic issue-coordinator driver selected Issue #${number}. Continue only this bounded worker-launch path; do not reselect another issue.
-
-Target:
-- GitHub repo: ${env.githubRepo}
-- Issue: #${number} ${title}
-- Issue URL: ${url}
-
-Required safety contract:
-- Claim before launch: remove \`${env.implementLabel}\` and add \`${env.inProgressLabel}\`.
-- Use a unique Worker name like \`${workerName}\`; never use the default \`pi\` name.
-- Create a Herdr worktree and then a dedicated tab with \`herdr tab create --workspace <workspaceId> --cwd <worktreePath> --label "${workerName}" --no-focus\`.
-- Render the Worker prompt with \`src/issue-coordinator-renderers.ts\` / \`renderIssueWorkerPrompt\` semantics, including promise file \`<worktreePath>/.deadloop/promise-<uuid>.json\`.
-- Start the Worker only through \`node ${env.automationDir}/launch-agent.ts --agent "${env.workerAgent}" --name "$worker_name" --cwd "$worktree_path" --repo-path ${shellQuote(env.repoPath)} --level "$level" --model "${env.workerModel}" --uuid "$uuid" --prompt-file "$prompt_file" --tab "$tab_id"\`.
-- The promise file is the only completion authority. When \`complete\` or \`blocked\` appears, break polling immediately (\`complete|blocked) break\`). Do not use Herdr status as completion authority.
-- After a complete promise, run validation including \`${env.checkCommand}\`, create a reviewable PR, add \`${env.reviewLabel}\`, and preserve existing safety rules.
-
-Report only the resulting action and evidence.`;
-}
-
 function envConfig() {
   return {
     projectId: process.env.DEADLOOP_PROJECT_ID || "project",
@@ -232,7 +202,6 @@ function envConfig() {
     needsInfoLabel: process.env.DEADLOOP_NEEDS_INFO_LABEL || "needs-info",
     wontfixLabel: process.env.DEADLOOP_WONTFIX_LABEL || "wontfix",
     needsTriageLabel: process.env.DEADLOOP_NEEDS_TRIAGE_LABEL || "needs-triage",
-    simulateLaunch: process.env.DEADLOOP_SIMULATE_LAUNCH === "1",
   };
 }
 
@@ -275,20 +244,12 @@ function drive(fixturePath: string | undefined): DriverResult {
     });
   }
 
-  if (shouldDirectLaunch(fixture, env)) {
-    const launch = launchIssueWorker(issue, env, fixture);
-    return driverResult("needs_llm", `Launched Worker for Issue #${issue.number}`, {
-      driverAction: "worker_monitor_request",
-      issueNumber: issue.number,
-      launch,
-      prompt: issueMonitorPrompt(issue, env, launch),
-    });
-  }
-
-  return driverResult("needs_llm", `Issue #${issue.number} needs Worker launch`, {
-    driverAction: "worker_launch_request",
+  const launch = launchIssueWorker(issue, env, fixture);
+  return driverResult("needs_llm", `Launched Worker for Issue #${issue.number}`, {
+    driverAction: "worker_monitor_request",
     issueNumber: issue.number,
-    prompt: workerLaunchPrompt(issue, env),
+    launch,
+    prompt: issueMonitorPrompt(issue, env, launch),
   });
 }
 

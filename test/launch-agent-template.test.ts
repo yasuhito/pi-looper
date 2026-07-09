@@ -11,14 +11,18 @@ function readTemplate(name: string): string {
   return fs.readFileSync(path.join(automationDir, name), "utf8");
 }
 
-function issueCoordinatorWorkerPrompt(): string {
+function issueCoordinatorWorkerResult(): Record<string, any> {
   const result = spawnSync("node", [driverScript, "--fixture", "test/fixtures/issue-coordinator/driver-ready-worker.json"], {
     cwd: process.cwd(),
     encoding: "utf8",
     env: { ...process.env, DEADLOOP_PROJECT_ID: "demo", DEADLOOP_REPO_PATH: "/repo", DEADLOOP_GITHUB_REPO: "owner/repo" },
   });
   if (result.status !== 0) throw new Error(result.stderr || result.stdout);
-  return JSON.parse(result.stdout).prompt;
+  return JSON.parse(result.stdout);
+}
+
+function issueCoordinatorWorkerPrompt(): string {
+  return issueCoordinatorWorkerResult().prompt;
 }
 
 // A raw agent-launch branch is a `herdr agent start ... -- pi`/`-- claude`
@@ -26,8 +30,8 @@ function issueCoordinatorWorkerPrompt(): string {
 const rawLaunchBranch = /agent start[^\n]*--\s+(pi|claude)\b/;
 
 describe("agent launch template migration", () => {
-  it("launches workers through launch-agent in the issue coordinator", () => {
-    expect(issueCoordinatorWorkerPrompt()).toMatch(/launch-agent\.ts/);
+  it("launches workers deterministically before issue coordinator monitoring", () => {
+    expect(issueCoordinatorWorkerResult().driverAction).toBe("worker_monitor_request");
   });
 
   it("launches the review agent through launch-agent in the pr reviewer", () => {

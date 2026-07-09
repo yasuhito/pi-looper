@@ -48,39 +48,33 @@ describe("issue coordinator deterministic driver", () => {
   });
 
   it("does not block implementable issues that only reference a PRD document path", () => {
-    expect(runDriverFixture("driver-prd-doc-reference.json").driverAction).toBe("worker_launch_request");
+    expect(runDriverFixture("driver-prd-doc-reference.json").driverAction).toBe("worker_monitor_request");
   });
 
-  it("requests a bounded LLM worker-launch prompt for ready issues", () => {
-    expect(runDriverFixture("driver-ready-worker.json").driverAction).toBe("worker_launch_request");
+  it("launches ready issues deterministically before monitoring", () => {
+    expect(runDriverFixture("driver-ready-worker.json").driverAction).toBe("worker_monitor_request");
   });
 
-  it("keeps worker launch requests on launch-agent", () => {
-    expect(runDriverFixture("driver-ready-worker.json").prompt).toContain("launch-agent.ts");
+  it("reports the deterministic Worker name", () => {
+    expect(runDriverFixture("driver-ready-worker.json").launch.workerName).toBe("demo-issue-12-worker");
   });
 
-  it("keeps worker launch requests off the default agent name", () => {
-    expect(runDriverFixture("driver-ready-worker.json").prompt).toContain("demo-issue-12-worker");
+  it("does not ask the LLM to run launch-agent", () => {
+    expect(runDriverFixture("driver-ready-worker.json").prompt).not.toContain("launch-agent.ts");
   });
 
   it("keeps promise files as the worker completion authority", () => {
     expect(runDriverFixture("driver-ready-worker.json").prompt).toContain("only completion authority");
   });
 
-  it("can launch workers deterministically before asking for monitoring", () => {
-    expect(runDriverFixture("driver-ready-worker.json", { DEADLOOP_SIMULATE_LAUNCH: "1" }).driverAction).toBe(
-      "worker_monitor_request",
-    );
-  });
-
   it("reports the deterministic worker promise path", () => {
-    expect(runDriverFixture("driver-ready-worker.json", { DEADLOOP_SIMULATE_LAUNCH: "1" }).launch.promiseFile).toContain(
+    expect(runDriverFixture("driver-ready-worker.json").launch.promiseFile).toContain(
       ".deadloop/promise-",
     );
   });
 
   it("preserves validation before PR creation after deterministic worker launch", () => {
-    expect(runDriverFixture("driver-ready-worker.json", { DEADLOOP_SIMULATE_LAUNCH: "1" }).prompt).toContain(
+    expect(runDriverFixture("driver-ready-worker.json").prompt).toContain(
       "Run validation including `npm test` before creating any PR",
     );
   });
