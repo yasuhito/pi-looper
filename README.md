@@ -51,8 +51,9 @@ Local project fields include:
 - `baseBranch` — branch or remote ref used as the worktree base, usually `origin/main`. Inferred from the current branch upstream for implicit `deadloop.json` projects.
 - `worktreeRoot` — directory where Herdr may create worktrees. Defaults to `~/.herdr/worktrees/<repo>/` for implicit `deadloop.json` projects.
 - `autoMerge` — keep `false` until the repository has proven safeguards.
+- `externalReview` — disabled by default. Set `{ "enabled": true }` only where the built-in CodeRabbit/Copilot request path is available.
 
-Shared repository policy lives in `deadloop.json` on the trusted base branch. Standard labels, verification (`git diff --check`, then `npm run check` or existing `test` / `lint` / `typecheck` scripts), worker instruction files (`AGENTS.md`, `CONTEXT.md`, `README.md`), and the issue coordinator / PR reviewer automations are defaults, so omit those sections unless you are customizing them. Local `projects.json` values win over repo policy.
+Shared repository policy lives in `deadloop.json` on the trusted base branch. Standard labels, verification (`git diff --check`, then `npm run check` or existing `test` / `lint` / `typecheck` scripts), worker instruction files (`AGENTS.md`, `CONTEXT.md`, `README.md`), issue coordinator / PR reviewer automations, and disabled external review are defaults, so omit those sections unless you are customizing them. Local `projects.json` values win over repo policy.
 
 ## Create labels
 
@@ -75,7 +76,7 @@ An issue is eligible only when it has both `ready-for-agent` and `agent:implemen
 ## Roll out in phases
 
 1. **Issue coordination only** — start here if you want a slow rollout; humans still review and merge PRs.
-2. **Automated PR review** — use the standard PR reviewer with `autoMerge: false`; reviewed PRs hand off to `ready-for-human`.
+2. **Automated PR review** — use the standard PR reviewer with `autoMerge: false`; reviewed PRs hand off to `ready-for-human`. External review requests stay off unless `externalReview.enabled` is true.
 3. **Optional auto-merge** — consider `autoMerge: true` only after branch protection, CI, review expectations, dry-run/manual approval practices, and stop conditions are proven.
 
 ## Run

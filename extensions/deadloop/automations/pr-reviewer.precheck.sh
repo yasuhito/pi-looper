@@ -10,6 +10,7 @@ reviewing_label="${DEADLOOP_REVIEWING_LABEL:-agent:reviewing}"
 human_label="${DEADLOOP_HUMAN_LABEL:-ready-for-human}"
 blocked_label="${DEADLOOP_BLOCKED_LABEL:-agent:blocked}"
 auto_merge="${DEADLOOP_AUTO_MERGE:-0}"
+external_review_enabled="${DEADLOOP_EXTERNAL_REVIEW_ENABLED:-0}"
 external_review_wait_seconds="${DEADLOOP_EXTERNAL_REVIEW_WAIT_SECONDS:-1800}"
 automation_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -35,6 +36,7 @@ args=(
   --human-label "${human_label}"
   --blocked-label "${blocked_label}"
   --auto-merge "${auto_merge}"
+  --external-review-enabled "${external_review_enabled}"
   --external-review-wait-seconds "${external_review_wait_seconds}"
   --exit-code
 )

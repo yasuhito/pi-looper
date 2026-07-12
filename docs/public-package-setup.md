@@ -56,6 +56,7 @@ Key fields:
 - `worktreeRoot` — directory where the Herdr runner may create worker worktrees. Defaults to `~/.herdr/worktrees/<repo>/` for implicit `deadloop.json` projects.
 - `checkCommand` — optional verification command workers and reviewers must pass before handoff. Omit this for the standard convention: run `git diff --check`, then `npm run check` when it exists, otherwise the existing `test`, `lint`, and `typecheck` package scripts.
 - `autoMerge` — keep `false` until the repository has proven safeguards. Only `true` allows the PR reviewer automation to squash merge and delete the head branch after its gates pass.
+- `externalReview` — optional external review service gate. It is disabled by default; set `{ "enabled": true }` only for repositories where the built-in CodeRabbit/Copilot request path is available.
 - `workerInstructionFiles` — optional list of repository instruction files to mention in worker prompts. Omit this to use the standard convention: `AGENTS.md`, `CONTEXT.md`, `README.md`, plus relevant docs.
 - `workerInstructions` — legacy escape hatch for replacing the generated worker instruction text. Prefer repository docs plus `workerInstructionFiles` over long inline strings.
 - `workerAgent` — worker CLI agent type. Allowed values are `"pi"` and `"claude"`; the default is `"pi"`.
@@ -65,7 +66,7 @@ Key fields:
 - `labels` — GitHub labels used to coordinate issue and PR state. Omit this when using the standard labels.
 - `automations` — scheduled automation entries and their prompt/precheck files. Omit this to use the standard issue coordinator and PR reviewer. Set an explicit array only when customizing or disabling the standard automation set. Optional `driverFile` entries run bundled deterministic automation scripts after precheck and before sending any prompt; the driver can return `skip`, `done`, `needs_llm`, or `error` JSON to avoid unnecessary LLM context.
 
-Repo policy may set only shared, reviewable policy keys: `workerAgent`, `workerModel`, `reviewerAgent`, `reviewerModel`, `checkCommand`, `workerInstructionFiles`, `workerInstructions`, `workerLaunchPolicy`, `labels`, and `id` / `name` / `promptFile` / `precheckFile` / `driverFile` for automations. Keep `enabled`, `repoPath`, `githubRepo`, `baseBranch`, `worktreeRoot`, `autoMerge`, `schedule`, and `precheckTimeoutSeconds` local or inferred. Invalid JSON or disallowed keys stop that project safely and appear in `/deadloop-status` and `/deadloop-doctor`.
+Repo policy may set only shared, reviewable policy keys: `workerAgent`, `workerModel`, `reviewerAgent`, `reviewerModel`, `checkCommand`, `externalReview`, `workerInstructionFiles`, `workerInstructions`, `workerLaunchPolicy`, `labels`, and `id` / `name` / `promptFile` / `precheckFile` / `driverFile` for automations. Keep `enabled`, `repoPath`, `githubRepo`, `baseBranch`, `worktreeRoot`, `autoMerge`, `schedule`, and `precheckTimeoutSeconds` local or inferred. Invalid JSON or disallowed keys stop that project safely and appear in `/deadloop-status` and `/deadloop-doctor`.
 
 By default deadloop reads `~/.pi/agent/deadloop/projects.json`. Use `DEADLOOP_CONFIG=/path/to/projects.json` only when you intentionally want a different config file.
 
@@ -104,7 +105,7 @@ Use the standard `pr-reviewer` only after Phase 1 is reliable. Keep:
 "autoMerge": false
 ```
 
-With auto-merge disabled, the reviewer automation can gather external review context, start a review agent session, request fixes, and hand the PR to `ready-for-human` instead of merging.
+With auto-merge disabled, the reviewer automation starts a review agent session, requests fixes when needed, and hands the PR to `ready-for-human` instead of merging. External review requests are disabled by default; enable `externalReview` only in repositories where the external service is installed and allowed.
 
 ### Phase 3: Consider auto-merge
 

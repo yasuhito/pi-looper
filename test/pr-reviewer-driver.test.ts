@@ -36,12 +36,16 @@ describe("PR reviewer deterministic driver", () => {
     expect(runDriverFixture("pending-ci.json").driverAction).toBe("wait");
   });
 
-  it("waits for fresh external review without sending a review prompt", () => {
-    expect(runDriverFixture("external-review-wait.json").driverAction).toBe("wait");
+  it("launches reviewer by default without external review", () => {
+    expect(runDriverFixture("external-review-request.json").driverAction).toBe("reviewer_monitor_request");
   });
 
-  it("requests external review deterministically", () => {
-    expect(runDriverFixture("external-review-request.json").driverAction).toBe("external_review_requested");
+  it("waits for fresh external review when external review is enabled", () => {
+    expect(runDriverFixture("external-review-wait.json", { DEADLOOP_EXTERNAL_REVIEW_ENABLED: "1" }).driverAction).toBe("wait");
+  });
+
+  it("requests external review deterministically when external review is enabled", () => {
+    expect(runDriverFixture("external-review-request.json", { DEADLOOP_EXTERNAL_REVIEW_ENABLED: "1" }).driverAction).toBe("external_review_requested");
   });
 
   it("renders a blocked comment for draft PRs", () => {
@@ -49,26 +53,26 @@ describe("PR reviewer deterministic driver", () => {
   });
 
   it("launches stale external-review fallback deterministically before monitoring", () => {
-    expect(runDriverFixture("fallback-review.json").driverAction).toBe("reviewer_monitor_request");
+    expect(runDriverFixture("fallback-review.json", { DEADLOOP_EXTERNAL_REVIEW_ENABLED: "1" }).driverAction).toBe("reviewer_monitor_request");
   });
 
   it("reports the deterministic reviewer promise path", () => {
-    expect(runDriverFixture("fallback-review.json").launch.promiseFile).toContain(
+    expect(runDriverFixture("fallback-review.json", { DEADLOOP_EXTERNAL_REVIEW_ENABLED: "1" }).launch.promiseFile).toContain(
       ".deadloop/promise-",
     );
   });
 
   it("preserves autoMerge=false safety after deterministic reviewer launch", () => {
-    expect(runDriverFixture("fallback-review.json").prompt).toContain(
+    expect(runDriverFixture("fallback-review.json", { DEADLOOP_EXTERNAL_REVIEW_ENABLED: "1" }).prompt).toContain(
       "If autoMerge=false, never merge",
     );
   });
 
   it("does not ask the LLM to run launch-agent", () => {
-    expect(runDriverFixture("fallback-review.json").prompt).not.toContain("launch-agent.ts");
+    expect(runDriverFixture("fallback-review.json", { DEADLOOP_EXTERNAL_REVIEW_ENABLED: "1" }).prompt).not.toContain("launch-agent.ts");
   });
 
   it("reports the deterministic reviewer name", () => {
-    expect(runDriverFixture("fallback-review.json").launch.reviewerName).toBe("demo-pr-24-reviewer");
+    expect(runDriverFixture("fallback-review.json", { DEADLOOP_EXTERNAL_REVIEW_ENABLED: "1" }).launch.reviewerName).toBe("demo-pr-24-reviewer");
   });
 });

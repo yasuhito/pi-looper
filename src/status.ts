@@ -345,6 +345,7 @@ export function formatStatusReport(snapshot: StatusSnapshot): string {
     ...snapshot.warnings.map((warning) => `warning: ${warning}`),
     `config: ${formatConfigSource(project)}`,
     `autoMerge: ${project.autoMerge ? "on" : "off"}`,
+    `externalReview: ${project.externalReview.enabled ? "on" : "off"}`,
     "",
     "Automations:",
   ];

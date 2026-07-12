@@ -14,6 +14,10 @@
         "allowAutoMerge": false,
         "localCommands": ["git diff --check"]
       },
+      "externalReview": {
+        "enabled": false,
+        "waitSeconds": 1800
+      },
       "automations": [
         {
           "id": "example-project:issue-coordinator",

@@ -7,6 +7,7 @@ You are `{{projectId}} PR reviewer`. This is a thin driver-first front end: run 
 - Base branch: `{{baseBranch}}`
 - Driver: `{{automationDir}}/pr-reviewer-driver.ts --json`
 - autoMerge: `{{autoMerge}}`
+- externalReviewEnabled: `{{externalReviewEnabled}}`
 - reviewerAgent: `{{reviewerAgent}}`
 - reviewerModel: `{{reviewerModel}}`
 

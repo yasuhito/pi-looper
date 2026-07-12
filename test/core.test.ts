@@ -80,6 +80,10 @@ describe("deterministic extension core", () => {
         allowAutoMerge: false,
         localCommands: "",
       },
+      externalReview: {
+        enabled: false,
+        waitSeconds: 1800,
+      },
       workerInstructions:
         "Start by reading AGENTS.md, CONTEXT.md, README.md, and docs relevant to the change. Follow repository-local instructions first.",
       workerLaunchPolicy:
@@ -328,6 +332,10 @@ describe("deterministic extension core", () => {
     });
   });
 
+  it("defaults external review to disabled", () => {
+    expect(normalizeProject({}).externalReview).toEqual({ enabled: false, waitSeconds: 1800 });
+  });
+
   it("normalizes CI fallback local commands for prompt templates", () => {
     const project = normalizeProject({
       ciFallback: {
@@ -350,6 +358,12 @@ describe("deterministic extension core", () => {
     const project = normalizeProject({ automations: [{}] });
 
     expect(renderTemplate("{{autoMerge}}", templateValues(project, project.automations[0], "/auto"))).toBe("false");
+  });
+
+  it("exposes external review state to prompt templates", () => {
+    const project = normalizeProject({ externalReview: { enabled: true, waitSeconds: 60 }, automations: [{}] });
+
+    expect(renderTemplate("{{externalReviewEnabled}}|{{externalReviewWaitSeconds}}", templateValues(project, project.automations[0], "/auto"))).toBe("true|60");
   });
 
   it("preserves an automation driver file from project config", () => {
@@ -451,6 +465,14 @@ describe("deterministic extension core", () => {
     );
 
     expect(result.ok && result.projects[0].automations[0].driverFile).toBe("issue-coordinator-driver.ts");
+  });
+
+  it("uses trusted repo policy external review settings", () => {
+    const result = parseProjectsConfig(JSON.stringify({ projects: [{ id: "demo", repoPath: "/repo" }] }), "", {
+      repoPolicyProvider: () => ({ status: "loaded", text: JSON.stringify({ externalReview: { enabled: true } }) }),
+    });
+
+    expect(result.ok && result.projects[0].externalReview.enabled).toBe(true);
   });
 
   it("rejects forbidden trusted repo policy keys", () => {

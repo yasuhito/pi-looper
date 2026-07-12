@@ -14,6 +14,7 @@ type PrReviewerFlowEnv = {
   humanLabel: string;
   blockedLabel: string;
   autoMerge: boolean;
+  externalReviewEnabled: boolean;
   externalReviewWaitSeconds: string;
   now: string;
 };
@@ -40,6 +41,7 @@ function decisionConfig(env: PrReviewerFlowEnv): JsonObject {
     humanLabel: env.humanLabel,
     blockedLabel: env.blockedLabel,
     autoMerge: env.autoMerge,
+    externalReviewEnabled: env.externalReviewEnabled,
     externalReviewWaitSeconds,
     projectId: env.projectId,
     now,
@@ -73,6 +75,16 @@ function planPrReviewerAction(prs: JsonObject[], agents: JsonObject, env: PrRevi
 
   const pr = selectedPr(prs, Number(decision.number));
   if (decision.action === "draft_gate") return { kind: "draft_gate", decision, pr };
+
+  if (!env.externalReviewEnabled) {
+    return {
+      kind: "review_required",
+      decision,
+      pr,
+      gate: { action: "disabled" },
+      reason: String(decision.reason || "external_review_disabled"),
+    };
+  }
 
   const gate = decideExternalReviewGate(pr, config);
   if (gate.action === "request_external_review") return { kind: "external_review_request", decision, pr, gate };

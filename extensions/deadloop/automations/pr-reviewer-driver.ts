@@ -49,6 +49,7 @@ function envConfig() {
     blockedLabel: process.env.DEADLOOP_BLOCKED_LABEL || "agent:blocked",
     implementLabel: process.env.DEADLOOP_IMPLEMENT_LABEL || "agent:implement",
     autoMerge: parseBool(process.env.DEADLOOP_AUTO_MERGE),
+    externalReviewEnabled: parseBool(process.env.DEADLOOP_EXTERNAL_REVIEW_ENABLED),
     externalReviewWaitSeconds: process.env.DEADLOOP_EXTERNAL_REVIEW_WAIT_SECONDS || "1800",
     now: process.env.DEADLOOP_NOW || "",
   };

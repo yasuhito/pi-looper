@@ -12,6 +12,7 @@ type ReviewDecisionConfig = {
   humanLabel: string;
   blockedLabel: string;
   autoMerge: boolean;
+  externalReviewEnabled: boolean;
   externalReviewWaitSeconds: number;
   projectId: string;
   now: Date;
@@ -27,6 +28,7 @@ function defaultDecisionConfig(overrides: Partial<ReviewDecisionConfig> = {}): R
     humanLabel: "ready-for-human",
     blockedLabel: "agent:blocked",
     autoMerge: false,
+    externalReviewEnabled: false,
     externalReviewWaitSeconds: 1800,
     projectId: "",
     now: new Date(),
@@ -193,7 +195,7 @@ function selectPrForReview(prs: AnyRecord[], config: ReviewDecisionConfig = defa
     if (pr.isDraft) {
       return { selected: true, number: pr.number, action: "draft_gate", reason: "draft", staleReclaim, skipped };
     }
-    if (hasCopilotReviewRequest(pr) && !externalReviewWaitIsStale(pr, config)) {
+    if (config.externalReviewEnabled && hasCopilotReviewRequest(pr) && !externalReviewWaitIsStale(pr, config)) {
       skipped.push(skipForPrReviewer("external_review_wait", pr));
       continue;
     }
@@ -201,7 +203,7 @@ function selectPrForReview(prs: AnyRecord[], config: ReviewDecisionConfig = defa
       skipped.push(skipForPrReviewer("pending_checks", pr));
       continue;
     }
-    if (hasCoderabbitProcessingComment(pr) && !externalReviewWaitIsStale(pr, config)) {
+    if (config.externalReviewEnabled && hasCoderabbitProcessingComment(pr) && !externalReviewWaitIsStale(pr, config)) {
       skipped.push(skipForPrReviewer("external_review_wait", pr));
       continue;
     }
@@ -244,7 +246,7 @@ function loadAgents(file: string | undefined): unknown {
 }
 
 function parseArgsForPrReviewer(argv: string[]): AnyRecord {
-  const parsed: AnyRecord = { mode: "select", autoMerge: "0", externalReviewWaitSeconds: "1800" };
+  const parsed: AnyRecord = { mode: "select", autoMerge: "0", externalReviewEnabled: "0", externalReviewWaitSeconds: "1800" };
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
     if (token === "--exit-code") {
@@ -274,6 +276,7 @@ function cliConfig(args: AnyRecord): ReviewDecisionConfig {
     humanLabel: args.humanLabel || "ready-for-human",
     blockedLabel: args.blockedLabel || "agent:blocked",
     autoMerge: parseBoolForPrReviewer(args.autoMerge),
+    externalReviewEnabled: parseBoolForPrReviewer(args.externalReviewEnabled),
     externalReviewWaitSeconds: parseWaitSecondsForPrReviewer(args.externalReviewWaitSeconds),
     projectId: args.projectId || "",
     now,

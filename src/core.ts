@@ -78,6 +78,16 @@ export type NormalizedCiFallbackConfig = {
   localCommands: string;
 };
 
+export type RawExternalReviewConfig = {
+  enabled?: boolean;
+  waitSeconds?: number;
+};
+
+export type NormalizedExternalReviewConfig = {
+  enabled: boolean;
+  waitSeconds: number;
+};
+
 export type RawProject = {
   id?: string;
   enabled?: boolean;
@@ -88,6 +98,7 @@ export type RawProject = {
   checkCommand?: string;
   autoMerge?: boolean;
   ciFallback?: RawCiFallbackConfig;
+  externalReview?: RawExternalReviewConfig;
   workerInstructions?: string;
   workerInstructionFiles?: string[];
   workerLaunchPolicy?: string;
@@ -125,6 +136,7 @@ export type NormalizedProject = {
   checkCommand: string;
   autoMerge: boolean;
   ciFallback: NormalizedCiFallbackConfig;
+  externalReview: NormalizedExternalReviewConfig;
   workerInstructions: string;
   workerLaunchPolicy: string;
   workerAgent: WorkerAgent;
@@ -266,6 +278,7 @@ const REPO_POLICY_PROJECT_KEYS = new Set([
   "workerInstructions",
   "workerInstructionFiles",
   "workerLaunchPolicy",
+  "externalReview",
   "labels",
   "automations",
 ]);
@@ -303,6 +316,19 @@ function validateRepoPolicy(policy: unknown): RawProject {
   const workerInstructionFiles = (policy as { workerInstructionFiles?: unknown }).workerInstructionFiles;
   if (workerInstructionFiles !== undefined) {
     validateStringArray(workerInstructionFiles, "repo policy workerInstructionFiles");
+  }
+  const externalReview = (policy as { externalReview?: unknown }).externalReview;
+  if (externalReview !== undefined) {
+    validateObject(externalReview, "repo policy externalReview");
+    for (const key of Object.keys(externalReview)) {
+      if (!new Set(["enabled", "waitSeconds"]).has(key)) throw new Error(`repo policy externalReview key is not allowed: ${key}`);
+    }
+    const enabled = (externalReview as { enabled?: unknown }).enabled;
+    if (enabled !== undefined && typeof enabled !== "boolean") throw new Error("repo policy externalReview.enabled must be a boolean");
+    const waitSeconds = (externalReview as { waitSeconds?: unknown }).waitSeconds;
+    if (waitSeconds !== undefined && (!Number.isFinite(waitSeconds) || Number(waitSeconds) < 0)) {
+      throw new Error("repo policy externalReview.waitSeconds must be a non-negative number");
+    }
   }
   const labels = (policy as { labels?: unknown }).labels;
   if (labels !== undefined) {
@@ -403,6 +429,7 @@ function mergeRepoPolicy(local: RawProject, policy: RawProject): { project: RawP
     "workerInstructions",
     "workerInstructionFiles",
     "workerLaunchPolicy",
+    "externalReview",
   ]);
   const labels = mergeLabels(local.labels, policy.labels);
   if (labels.labels) merged.labels = labels.labels;
@@ -464,6 +491,14 @@ function normalizeCiFallback(value: RawCiFallbackConfig | undefined): Normalized
   };
 }
 
+function normalizeExternalReview(value: RawExternalReviewConfig | undefined): NormalizedExternalReviewConfig {
+  const waitSeconds = Number(value?.waitSeconds ?? 1800);
+  return {
+    enabled: value?.enabled === true,
+    waitSeconds: Number.isFinite(waitSeconds) && waitSeconds >= 0 ? waitSeconds : 1800,
+  };
+}
+
 function normalizeWorkerInstructions(raw: Pick<RawProject, "workerInstructions" | "workerInstructionFiles">): string {
   if (raw.workerInstructions && raw.workerInstructions.trim()) return raw.workerInstructions;
   const files = raw.workerInstructionFiles === undefined ? [...DEFAULT_WORKER_INSTRUCTION_FILES] : raw.workerInstructionFiles;
@@ -514,6 +549,7 @@ export function normalizeProject(raw: RawProject, configSource?: ProjectConfigSo
     checkCommand: raw.checkCommand || DEFAULT_CHECK_COMMAND,
     autoMerge: raw.autoMerge === true,
     ciFallback: normalizeCiFallback(raw.ciFallback),
+    externalReview: normalizeExternalReview(raw.externalReview),
     workerInstructions: normalizeWorkerInstructions(raw),
     workerLaunchPolicy: raw.workerLaunchPolicy || DEFAULT_WORKER_LAUNCH_POLICY,
     workerAgent: normalizeAgentKind(raw.workerAgent, "workerAgent"),
@@ -676,6 +712,8 @@ function automationRuntimeValues(
     ciFallbackMode: project.ciFallback.mode,
     ciFallbackAllowAutoMerge: project.ciFallback.allowAutoMerge,
     ciFallbackLocalCommands: project.ciFallback.localCommands,
+    externalReviewEnabled: project.externalReview.enabled,
+    externalReviewWaitSeconds: project.externalReview.waitSeconds,
     workerInstructions: project.workerInstructions || "",
     workerLaunchPolicy: project.workerLaunchPolicy || "",
     workerAgent: project.workerAgent,
@@ -735,6 +773,8 @@ export function automationEnvironment(
     DEADLOOP_CI_FALLBACK_MODE: envText(values.ciFallbackMode),
     DEADLOOP_CI_FALLBACK_ALLOW_AUTO_MERGE: envText(values.ciFallbackAllowAutoMerge),
     DEADLOOP_CI_FALLBACK_LOCAL_COMMANDS: envText(values.ciFallbackLocalCommands),
+    DEADLOOP_EXTERNAL_REVIEW_ENABLED: envText(values.externalReviewEnabled),
+    DEADLOOP_EXTERNAL_REVIEW_WAIT_SECONDS: envText(values.externalReviewWaitSeconds),
     DEADLOOP_READY_LABEL: envText(values.readyLabel),
     DEADLOOP_IMPLEMENT_LABEL: envText(values.implementLabel),
     DEADLOOP_IN_PROGRESS_LABEL: envText(values.inProgressLabel),

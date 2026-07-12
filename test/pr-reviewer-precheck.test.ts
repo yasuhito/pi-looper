@@ -33,7 +33,7 @@ function runExternalReviewGate(fixtureName: string, now = "2026-07-04T00:30:00Z"
 
 function runPrecheck(
   fixtureName: string,
-  options: { autoMerge?: boolean; now?: string; projectId?: string; agentsFixture?: string } = {},
+  options: { autoMerge?: boolean; externalReview?: boolean; now?: string; projectId?: string; agentsFixture?: string } = {},
 ): number | null {
   const tempRoot = mkdtempSync(path.join(tmpdir(), "deadloop-precheck-"));
   try {
@@ -84,6 +84,7 @@ function runPrecheck(
         DEADLOOP_REVIEWING_LABEL: "agent:reviewing",
         DEADLOOP_HUMAN_LABEL: "ready-for-human",
         DEADLOOP_BLOCKED_LABEL: "agent:blocked",
+        DEADLOOP_EXTERNAL_REVIEW_ENABLED: options.externalReview ? "1" : "0",
         DEADLOOP_EXTERNAL_REVIEW_WAIT_SECONDS: "1800",
         DEADLOOP_NOW: options.now || "2026-07-04T00:30:00Z",
         DEADLOOP_TEST_FIXTURE: path.join(process.cwd(), "test/fixtures/pr-reviewer", fixtureName),
@@ -123,12 +124,16 @@ describe("PR reviewer precheck", () => {
     expect(runPrecheck("precheck-stale-external-marker.json")).toBe(0);
   });
 
-  it("skips PRs while a Copilot review request is fresh", () => {
-    expect(runPrecheck("precheck-fresh-copilot-request.json")).toBe(1);
+  it("selects PRs with fresh external review markers when external review is disabled", () => {
+    expect(runPrecheck("precheck-fresh-copilot-request.json")).toBe(0);
   });
 
-  it("skips PRs while CodeRabbit is processing", () => {
-    expect(runPrecheck("precheck-coderabbit-processing.json")).toBe(1);
+  it("skips PRs while a Copilot review request is fresh when external review is enabled", () => {
+    expect(runPrecheck("precheck-fresh-copilot-request.json", { externalReview: true })).toBe(1);
+  });
+
+  it("skips PRs while CodeRabbit is processing when external review is enabled", () => {
+    expect(runPrecheck("precheck-coderabbit-processing.json", { externalReview: true })).toBe(1);
   });
 
   it("starts the automation for draft PRs so the draft gate can block them", () => {
