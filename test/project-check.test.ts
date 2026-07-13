@@ -67,6 +67,20 @@ describe("project check", () => {
     expect(result.code).toBe(1);
   });
 
+  it("fails closed instead of hiding a tracked file in a runtime directory", async () => {
+    const cwd = fixtureRepo();
+    fs.writeFileSync(path.join(cwd, ".deadloop", "product.json"), "broken tracked JSON\n");
+    execFileSync("git", ["-C", cwd, "add", ".deadloop/product.json"]);
+
+    const result = await runProjectCheck({
+      cwd,
+      command: "node check-json.cjs",
+      quarantineRoot: path.join(os.tmpdir(), "deadloop-project-check-quarantine"),
+    });
+
+    expect(result.code).toBe(1);
+  });
+
   it("restores promise evidence after a failed check", async () => {
     const cwd = fixtureRepo();
 

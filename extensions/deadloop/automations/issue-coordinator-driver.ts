@@ -239,7 +239,12 @@ function drive(fixturePath: string | undefined): DriverResult {
       actorName: "Worker",
       worktreePath: String(launch.worktreePath || ""),
       branch: String(launch.branch || ""),
-      checkCommand: env.checkCommand,
+      checkCommand: renderProjectCheckCommand({
+        automationDir: env.automationDir,
+        stateDir: env.stateDir,
+        cwd: String(launch.worktreePath || ""),
+        command: env.checkCommand,
+      }),
       reviewLabel: env.reviewLabel,
       inProgressLabel: env.inProgressLabel,
       blockedLabel: env.blockedLabel,

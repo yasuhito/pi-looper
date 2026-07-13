@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { recordAutomationResult, runScheduledAutomation } from "../src/automation-runner";
+import { runScheduledAutomation } from "../src/automation-runner";
 import { normalizeProject, type AutomationFileResolution } from "../src/core";
 
 function foundFile(requested: string | undefined): AutomationFileResolution {
@@ -8,14 +8,19 @@ function foundFile(requested: string | undefined): AutomationFileResolution {
   return { requested: name, resolved: name, found: name.length > 0 };
 }
 
-async function exerciseDriver(stdout: string, options: { code?: number; stderr?: string } = {}) {
+async function exerciseDriver(
+  stdout: string,
+  options: { code?: number; stderr?: string; initialEntry?: Record<string, unknown> } = {},
+) {
   const project = normalizeProject({
     id: "demo",
     automations: [
       { id: "demo:auto", name: "auto", precheckFile: "precheck.sh", promptFile: "full.md", driverFile: "driver.py" },
     ],
   });
-  const state = { automations: {} };
+  const state = {
+    automations: options.initialEntry ? { "demo:demo:auto": { ...options.initialEntry } } : {},
+  };
   const sent: string[] = [];
 
   await runScheduledAutomation(project, project.automations[0], 123, state, {
@@ -35,12 +40,17 @@ async function exerciseDriver(stdout: string, options: { code?: number; stderr?:
 }
 
 describe("deterministic automation driver runner", () => {
-  it("clears the current driver error after recovery", () => {
-    const entry = { lastResult: "driver_error", failureStreak: 8, lastError: "agent_name_taken" };
+  it("clears the current driver error after a recovered launch is queued", async () => {
+    const result = await exerciseDriver(
+      JSON.stringify({ action: "needs_llm", summary: "recovered", prompt: "monitor" }),
+      { initialEntry: { lastResult: "driver_error", failureStreak: 8, lastError: "agent_name_taken" } },
+    );
 
-    recordAutomationResult(entry, "driver_needs_llm_queued");
-
-    expect(entry).toEqual({ lastResult: "driver_needs_llm_queued", failureStreak: 0 });
+    expect({
+      failureStreak: result.entry.failureStreak,
+      lastError: result.entry.lastError,
+      lastResult: result.entry.lastResult,
+    }).toEqual({ failureStreak: 0, lastError: undefined, lastResult: "driver_needs_llm_queued" });
   });
 
   it("skips sending a prompt when the driver returns skip", async () => {

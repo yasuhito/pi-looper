@@ -261,7 +261,12 @@ function drive(fixturePath: string | undefined): DriverResult {
       automationDir: env.automationDir,
       promiseFile: String(launch.promiseFile || ""),
       actorName: "reviewer",
-      checkCommand: env.checkCommand,
+      checkCommand: renderProjectCheckCommand({
+        automationDir: env.automationDir,
+        stateDir: env.stateDir,
+        cwd: String(launch.worktreePath || ""),
+        command: env.checkCommand,
+      }),
       humanLabel: env.humanLabel,
       reviewingLabel: env.reviewingLabel,
       blockedLabel: env.blockedLabel,

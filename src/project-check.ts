@@ -1,6 +1,6 @@
 const fs = require("node:fs") as typeof import("node:fs");
 const path = require("node:path") as typeof import("node:path");
-const { spawn } = require("node:child_process") as typeof import("node:child_process");
+const { execFileSync, spawn } = require("node:child_process") as typeof import("node:child_process");
 
 const RUNTIME_PATHS = [".deadloop", ".pi-subagents"];
 
@@ -73,6 +73,11 @@ function mergeRestoredPath(source: string, target: string): void {
   }
 
   fs.renameSync(source, preservedPath(target));
+}
+
+function trackedRuntimeFiles(cwd: string): string[] {
+  const output = execFileSync("git", ["-C", cwd, "ls-files", "-z", "--", ...RUNTIME_PATHS], { encoding: "utf8" });
+  return output.split("\0").filter(Boolean);
 }
 
 function hideRuntimeArtifacts(cwd: string, quarantineRoot: string): { restore: () => void } {
@@ -157,6 +162,26 @@ function runShell(
 }
 
 async function runProjectCheck(input: ProjectCheckInput): Promise<ProjectCheckResult> {
+  let tracked: string[];
+  try {
+    tracked = trackedRuntimeFiles(input.cwd);
+  } catch (error) {
+    return {
+      code: 1,
+      stdout: "",
+      stderr: `project-check could not inspect tracked runtime paths: ${error instanceof Error ? error.message : String(error)}\n`,
+      timedOut: false,
+    };
+  }
+  if (tracked.length) {
+    return {
+      code: 1,
+      stdout: "",
+      stderr: `project-check refuses to hide tracked runtime paths: ${tracked.join(", ")}\n`,
+      timedOut: false,
+    };
+  }
+
   const hidden = hideRuntimeArtifacts(input.cwd, input.quarantineRoot);
   try {
     return await runShell(input.command, input.cwd, input.timeoutMs, input.signal);
