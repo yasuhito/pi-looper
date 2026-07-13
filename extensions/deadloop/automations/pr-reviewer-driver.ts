@@ -86,7 +86,7 @@ Target:
 Contract:
 - Do not edit the main workspace ${env.repoPath}; inspect only this worktree.
 - Read the PR diff, related issues/docs, and AGENTS.md. Check both spec fit and repository standards.
-- Run needed validation. Run the configured check only through the isolation helper: `node ${shellQuote(`${env.automationDir}/run-project-check.ts`)} --cwd ${shellQuote(worktreePath)} --command ${shellQuote(env.checkCommand)}`
+- Run needed validation. Run the configured check only through the isolation helper: node ${shellQuote(`${env.automationDir}/run-project-check.ts`)} --cwd ${shellQuote(worktreePath)} --command ${shellQuote(env.checkCommand)}
 - Do not push, edit labels, comment on PRs, merge, or delete branches.
 - If autoMerge=false, summarize the review for human handoff even if the PR looks mergeable.
 
