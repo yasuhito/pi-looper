@@ -20,7 +20,7 @@ When the current git repository has `deadloop.json` on the trusted base branch, 
 
 Runtime state and locks live under `~/.pi/agent/deadloop/`. Per-launch prompts and promise reports live under `~/.pi/agent/deadloop/runs/<uuid>/`, outside target worktrees.
 
-Worker and reviewer prompts run the configured project check through `run-project-check.ts`. The wrapper temporarily isolates `.deadloop` and `.pi-subagents` from recursive project tooling, then restores them after success, failure, timeout, or interruption. Tracked project files are never hidden.
+Worker, reviewer, and monitor prompts run the configured project check through `run-project-check.ts`. The wrapper temporarily isolates untracked `.deadloop` and `.pi-subagents` from recursive project tooling, then restores them after success, failure, timeout, or interruption. Tracked project files are never hidden; if either runtime directory contains a tracked file, validation fails closed instead.
 
 ## Commands
 
