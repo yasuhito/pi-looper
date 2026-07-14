@@ -93,17 +93,38 @@ function countAssertions(root: ts.FunctionLikeDeclaration, bindings: ReturnType<
   return count;
 }
 
+function cucumberStepBindings(sourceFile: ts.SourceFile): Map<string, "Given" | "When" | "Then"> {
+  const bindings = new Map<string, "Given" | "When" | "Then">([
+    ["Given", "Given"],
+    ["When", "When"],
+    ["Then", "Then"],
+  ]);
+  for (const statement of sourceFile.statements) {
+    if (
+      !ts.isImportDeclaration(statement) ||
+      !ts.isStringLiteral(statement.moduleSpecifier) ||
+      statement.moduleSpecifier.text !== "@cucumber/cucumber" ||
+      !statement.importClause?.namedBindings ||
+      !ts.isNamedImports(statement.importClause.namedBindings)
+    ) {
+      continue;
+    }
+    for (const element of statement.importClause.namedBindings.elements) {
+      const imported = element.propertyName?.text ?? element.name.text;
+      if (imported === "Given" || imported === "When" || imported === "Then") bindings.set(element.name.text, imported);
+    }
+  }
+  return bindings;
+}
+
 function checkStepDefinitions(file: SourceFile): string[] {
   const errors: string[] = [];
   const sourceFile = ts.createSourceFile(file.path, file.source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const bindings = assertionBindings(sourceFile);
+  const stepBindings = cucumberStepBindings(sourceFile);
   const visit = (node: ts.Node): void => {
-    if (
-      ts.isCallExpression(node) &&
-      ts.isIdentifier(node.expression) &&
-      ["Given", "When", "Then"].includes(node.expression.text)
-    ) {
-      const kind = node.expression.text;
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && stepBindings.has(node.expression.text)) {
+      const kind = stepBindings.get(node.expression.text) as "Given" | "When" | "Then";
       const implementation = node.arguments.find(
         (argument) => ts.isFunctionExpression(argument) || ts.isArrowFunction(argument),
       );

@@ -86,6 +86,30 @@ describe("acceptance test rules", () => {
     );
   });
 
+  it("rejects an assertion in an aliased When definition", () => {
+    const source = validSteps
+      .replace("Given, Then, When", "Given, Then, When as action")
+      .replace(
+        'When("通常検証を開始する", function () { this.code = 1; });',
+        'action("通常検証を開始する", function () { assert.ok(true); this.code = 1; });',
+      );
+    expect(checkAcceptanceRules(sources({ stepDefinitions: [{ path: "bad.steps.ts", source }] }))).toContain(
+      "bad.steps.ts:5: When step definition must not contain assertions",
+    );
+  });
+
+  it("rejects an aliased Then definition without an assertion", () => {
+    const source = validSteps
+      .replace("Given, Then, When", "Given, Then as outcome, When")
+      .replace(
+        'Then("検証は安全のため拒否される", function () { assert.equal(this.code, 1); });',
+        'outcome("検証は安全のため拒否される", function () { this.observed = this.code; });',
+      );
+    expect(checkAcceptanceRules(sources({ stepDefinitions: [{ path: "bad.steps.ts", source }] }))).toContain(
+      "bad.steps.ts:6: Then step definition must contain exactly one direct assertion (found 0)",
+    );
+  });
+
   it("rejects an assertion in an acceptance helper", () => {
     const helpers = [
       { path: "acceptance/support/helper.ts", source: 'import assert from "node:assert/strict"; assert.ok(true);' },
