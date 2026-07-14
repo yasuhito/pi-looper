@@ -3,6 +3,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+import { generateMessages } from "@cucumber/gherkin";
+import { IdGenerator, SourceMediaType } from "@cucumber/messages";
+
 type CucumberEnvelope = {
   testCase?: { id: string; testSteps: { id: string; pickleStepId?: string }[] };
   testCaseStarted?: { id: string; testCaseId: string };
@@ -64,10 +67,41 @@ export function countCompletedTestCases(messagePath: string): number {
   }).length;
 }
 
+function countDiscoveredScenarios(cwd: string): number {
+  const featureRoot = path.join(cwd, "acceptance/features");
+  if (!fs.existsSync(featureRoot)) return 0;
+  let count = 0;
+  const visit = (directory: string): void => {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const file = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        visit(file);
+      } else if (file.endsWith(".feature.md")) {
+        const envelopes = generateMessages(
+          fs.readFileSync(file, "utf8"),
+          file,
+          SourceMediaType.TEXT_X_CUCUMBER_GHERKIN_MARKDOWN,
+          {
+            defaultDialect: "ja",
+            includeGherkinDocument: false,
+            includePickles: true,
+            includeSource: false,
+            newId: IdGenerator.incrementing(),
+          },
+        );
+        count += envelopes.filter((envelope) => envelope.pickle).length;
+      }
+    }
+  };
+  visit(featureRoot);
+  return count;
+}
+
 export function runAcceptanceTests(cwd = process.cwd(), options: { quiet?: boolean } = {}): number {
   const reportError = (message: string): void => {
     if (!options.quiet) process.stderr.write(message);
   };
+  const discovered = countDiscoveredScenarios(cwd);
   const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "deadloop-cucumber-"));
   const messagePath = path.join(temporaryDirectory, "messages.ndjson");
   try {
@@ -82,6 +116,10 @@ export function runAcceptanceTests(cwd = process.cwd(), options: { quiet?: boole
       return 1;
     }
     if ((result.status ?? 1) !== 0) return result.status ?? 1;
+    if (discovered === 0) {
+      reportError("Cucumber discovered 0 scenarios; acceptance tests cannot pass without a discovered scenario.\n");
+      return 1;
+    }
     const completed = countCompletedTestCases(messagePath);
     if (completed === 0) {
       reportError("Cucumber completed 0 non-skipped scenarios; acceptance tests cannot pass without an executed scenario.\n");

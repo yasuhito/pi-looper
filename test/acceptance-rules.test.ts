@@ -252,6 +252,30 @@ Then("結果", function () { assert.equal(this.code, 1); });
     );
   });
 
+  it("rejects direct-require Cucumber registrations that violate assertion placement", () => {
+    const source = `
+require("@cucumber/cucumber").Given("実行用ディレクトリに追跡ファイルがある", function () { require("node:assert/strict").ok(true); });
+require("@cucumber/cucumber").When("通常検証を開始する", function () { this.code = 1; });
+require("@cucumber/cucumber").Then("検証は安全のため拒否される", function () {});
+`;
+    expect(checkAcceptanceRules(sources({ stepDefinitions: [{ path: "bad.steps.ts", source }] }))).toEqual(
+      expect.arrayContaining([
+        "bad.steps.ts:2: Given step definition must not contain assertions",
+        "bad.steps.ts:4: Then step definition must contain exactly one direct assertion (found 0)",
+      ]),
+    );
+  });
+
+  it("counts a direct-require assertion in a Then registration", () => {
+    const source = validSteps.replace(
+      "assert.equal(this.code, 1);",
+      'assert.equal(this.code, 1); require("node:assert/strict").ok(true);',
+    );
+    expect(checkAcceptanceRules(sources({ stepDefinitions: [{ path: "bad.steps.ts", source }] }))).toContain(
+      "bad.steps.ts:6: Then step definition must contain exactly one direct assertion (found 2)",
+    );
+  });
+
   it("rejects missing assertions for an aliased CommonJS Then binding", () => {
     const source = `
 const assert = require("node:assert/strict");

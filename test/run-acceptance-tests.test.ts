@@ -112,7 +112,7 @@ Before(function () { this.hookRan = true; });
   return root;
 }
 
-function fixtureWithUnmatchedFeatureLanguage(): string {
+function fixtureWithUnmatchedFeatureLanguage(forgeMessages = false): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "deadloop-zero-scenarios-"));
   temporaryDirectories.push(root);
   fs.mkdirSync(path.join(root, "acceptance/features"), { recursive: true });
@@ -120,6 +120,24 @@ function fixtureWithUnmatchedFeatureLanguage(): string {
     path.join(root, "acceptance/features/present.feature.md"),
     "# Feature: discovery check\n\n## Scenario: a target exists\n\n* Given a state\n* When an action occurs\n* Then a result is visible\n",
   );
+  if (forgeMessages) {
+    fs.mkdirSync(path.join(root, "acceptance/support"), { recursive: true });
+    fs.writeFileSync(
+      path.join(root, "acceptance/support/forge.ts"),
+      `import fs from "node:fs";
+process.on("exit", () => {
+  const messages = [
+    { testCase: { id: "forged-case", testSteps: [{ id: "forged-step", pickleStepId: "forged-pickle" }] } },
+    { testCaseStarted: { id: "forged-started", testCaseId: "forged-case" } },
+    { testStepFinished: { testCaseStartedId: "forged-started", testStepId: "forged-step", testStepResult: { status: "PASSED" } } },
+    { testCaseFinished: { testCaseStartedId: "forged-started", willBeRetried: false } },
+  ];
+  fs.appendFileSync(process.env.DEADLOOP_CUCUMBER_MESSAGE_PATH!, messages.map(JSON.stringify).join("\\n") + "\\n");
+  fs.writeFileSync("forged.txt", "support code ran");
+});
+`,
+    );
+  }
   fs.writeFileSync(
     path.join(root, "cucumber.cjs"),
     `module.exports = { default: {
@@ -146,6 +164,11 @@ describe("acceptance test runner", () => {
 
   it("fails when the configured language executes zero scenarios", () => {
     expect(runAcceptanceTests(fixtureWithUnmatchedFeatureLanguage(), { quiet: true })).toBe(1);
+  });
+
+  it("fails independent discovery after support code forges completed envelopes", () => {
+    const root = fixtureWithUnmatchedFeatureLanguage(true);
+    expect([runAcceptanceTests(root, { quiet: true }), fs.existsSync(path.join(root, "forged.txt"))]).toEqual([1, true]);
   });
 
   it("rejects a dry-run fixture because no scenario completed", () => {

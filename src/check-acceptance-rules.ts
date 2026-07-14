@@ -276,12 +276,18 @@ function isAssertionCall(node: ts.CallExpression, bindings: ReturnType<typeof as
   if (ts.isIdentifier(expression)) return bindings.functions.has(expression.text);
   if (ts.isPropertyAccessExpression(expression)) {
     const owner = unparenthesized(expression.expression);
+    const directModule = requiredModule(owner);
+    if (directModule && isNodeAssertModule(directModule)) return true;
     if (ts.isIdentifier(owner) && bindings.namespaces.has(owner.text)) return true;
     return isExpectationChain(owner, bindings.expectations);
   }
   if (ts.isElementAccessExpression(expression)) {
     const owner = unparenthesized(expression.expression);
-    return ts.isIdentifier(owner) && bindings.namespaces.has(owner.text);
+    const directModule = requiredModule(owner);
+    return Boolean(
+      (directModule && isNodeAssertModule(directModule)) ||
+        (ts.isIdentifier(owner) && bindings.namespaces.has(owner.text)),
+    );
   }
   return false;
 }
@@ -404,13 +410,31 @@ function cucumberStepKind(
 ): CucumberStepKind | undefined {
   const normalized = unparenthesized(expression);
   if (ts.isIdentifier(normalized)) return bindings.functions.get(normalized.text);
-  if (
-    ts.isPropertyAccessExpression(normalized) &&
-    ts.isIdentifier(unparenthesized(normalized.expression)) &&
-    bindings.namespaces.has((unparenthesized(normalized.expression) as ts.Identifier).text)
-  ) {
+  if (ts.isPropertyAccessExpression(normalized)) {
+    const owner = unparenthesized(normalized.expression);
+    const isCucumberNamespace =
+      requiredModule(owner) === "@cucumber/cucumber" ||
+      (ts.isIdentifier(owner) && bindings.namespaces.has(owner.text));
     const name = normalized.name.text;
-    if (name === "Given" || name === "When" || name === "Then" || name === "defineStep") return name;
+    if (
+      isCucumberNamespace &&
+      (name === "Given" || name === "When" || name === "Then" || name === "defineStep")
+    ) {
+      return name;
+    }
+  }
+  if (ts.isElementAccessExpression(normalized) && normalized.argumentExpression) {
+    const owner = unparenthesized(normalized.expression);
+    const name = ts.isStringLiteral(normalized.argumentExpression) ? normalized.argumentExpression.text : undefined;
+    const isCucumberNamespace =
+      requiredModule(owner) === "@cucumber/cucumber" ||
+      (ts.isIdentifier(owner) && bindings.namespaces.has(owner.text));
+    if (
+      isCucumberNamespace &&
+      (name === "Given" || name === "When" || name === "Then" || name === "defineStep")
+    ) {
+      return name;
+    }
   }
   return undefined;
 }
