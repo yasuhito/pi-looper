@@ -159,6 +159,15 @@ describe("acceptance test rules", () => {
     );
   });
 
+  it("rejects an assertion through a local assertion alias in a Given definition", () => {
+    const source = validSteps
+      .replace('import { Given, Then, When } from "@cucumber/cucumber";', 'import { Given, Then, When } from "@cucumber/cucumber";\nconst hiddenAssert = assert;')
+      .replace("this.tracked = true;", "hiddenAssert.ok(true); this.tracked = true;");
+    expect(checkAcceptanceRules(sources({ stepDefinitions: [{ path: "bad.steps.ts", source }] }))).toContain(
+      "bad.steps.ts:5: Given step definition must not contain assertions",
+    );
+  });
+
   it("rejects an assertion in a Given definition", () => {
     const source = validSteps.replace("this.tracked = true;", "assert.ok(true); this.tracked = true;");
     expect(checkAcceptanceRules(sources({ stepDefinitions: [{ path: "bad.steps.ts", source }] }))).toContain(
@@ -266,6 +275,18 @@ outcome("結果", function () { this.observed = this.code; });
       );
     expect(checkAcceptanceRules(sources({ stepDefinitions: [{ path: "bad.steps.ts", source }] }))).toContain(
       "bad.steps.ts:6: Then step definition must contain exactly one direct assertion (found 0)",
+    );
+  });
+
+  it("rejects a local alias of a Then registration without an assertion", () => {
+    const source = validSteps
+      .replace('import { Given, Then, When } from "@cucumber/cucumber";', 'import { Given, Then, When } from "@cucumber/cucumber";\nconst outcome = Then;')
+      .replace(
+        'Then("検証は安全のため拒否される", function () { assert.equal(this.code, 1); });',
+        'outcome("検証は安全のため拒否される", function () { this.observed = this.code; });',
+      );
+    expect(checkAcceptanceRules(sources({ stepDefinitions: [{ path: "bad.steps.ts", source }] }))).toContain(
+      "bad.steps.ts:7: Then step definition must contain exactly one direct assertion (found 0)",
     );
   });
 

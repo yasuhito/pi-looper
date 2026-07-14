@@ -3,8 +3,6 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { checkAcceptanceRules, loadAcceptanceSources } from "./check-acceptance-rules";
-
 type CucumberEnvelope = {
   testCase?: { id: string; testSteps: { id: string; pickleStepId?: string }[] };
   testCaseStarted?: { id: string; testCaseId: string };
@@ -63,12 +61,6 @@ export function runAcceptanceTests(cwd = process.cwd(), options: { quiet?: boole
   const reportError = (message: string): void => {
     if (!options.quiet) process.stderr.write(message);
   };
-  const ruleErrors = checkAcceptanceRules(loadAcceptanceSources(cwd));
-  if (ruleErrors.length) {
-    reportError(`${ruleErrors.join("\n")}\n`);
-    return 1;
-  }
-
   const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "deadloop-cucumber-"));
   const messagePath = path.join(temporaryDirectory, "messages.ndjson");
   try {

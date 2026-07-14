@@ -41,6 +41,38 @@ Then("結果がある", function () { assert.ok(true); });
   return root;
 }
 
+function fixtureWithStaticRuleViolation(): string {
+  const root = fs.mkdtempSync(path.join(process.cwd(), ".deadloop-cucumber-only-"));
+  temporaryDirectories.push(root);
+  fs.mkdirSync(path.join(root, "acceptance/features"), { recursive: true });
+  fs.mkdirSync(path.join(root, "acceptance/steps"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, "acceptance/features/static-rule.feature.md"),
+    "# 機能: Cucumber 単独実行\n\n## シナリオ: 静的規約検査を分離する\n\n* 前提 状態がある\n* もし 操作する\n* ならば 結果がある\n",
+  );
+  fs.writeFileSync(
+    path.join(root, "acceptance/steps/static-rule.steps.ts"),
+    `import assert from "node:assert/strict";
+import { Given, Then, When } from "@cucumber/cucumber";
+Given("状態がある", function () { assert.ok(true); });
+When("操作する", function () {});
+Then("結果がある", function () { assert.ok(true); });
+`,
+  );
+  fs.writeFileSync(
+    path.join(root, "cucumber.cjs"),
+    `module.exports = { default: {
+  paths: ["acceptance/features/**/*.feature.md"],
+  requireModule: ["tsx/cjs"],
+  require: ["acceptance/steps/**/*.ts"],
+  language: "ja",
+  strict: true,
+  format: ["progress", \`message:\${process.env.DEADLOOP_CUCUMBER_MESSAGE_PATH}\`],
+} };\n`,
+  );
+  return root;
+}
+
 function fixtureWithSkippedScenarioAndPassingHook(): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "deadloop-skipped-hook-"));
   temporaryDirectories.push(root);
@@ -107,6 +139,10 @@ afterEach(() => {
 });
 
 describe("acceptance test runner", () => {
+  it("runs Cucumber without invoking the separate static rule checker", () => {
+    expect(runAcceptanceTests(fixtureWithStaticRuleViolation(), { quiet: true })).toBe(0);
+  });
+
   it("fails when the configured language executes zero scenarios", () => {
     expect(runAcceptanceTests(fixtureWithUnmatchedFeatureLanguage(), { quiet: true })).toBe(1);
   });

@@ -102,6 +102,27 @@ function isNodeAssertModule(module: string): boolean {
   return module === "assert" || module === "assert/strict" || module === "node:assert" || module === "node:assert/strict";
 }
 
+function topLevelVariableDeclarations(sourceFile: ts.SourceFile): ts.VariableDeclaration[] {
+  return sourceFile.statements.flatMap((statement) =>
+    ts.isVariableStatement(statement) ? [...statement.declarationList.declarations] : [],
+  );
+}
+
+function accessedProperty(expression: ts.Expression): { owner: string; property: string } | undefined {
+  if (ts.isPropertyAccessExpression(expression) && ts.isIdentifier(expression.expression)) {
+    return { owner: expression.expression.text, property: expression.name.text };
+  }
+  if (
+    ts.isElementAccessExpression(expression) &&
+    ts.isIdentifier(expression.expression) &&
+    expression.argumentExpression &&
+    ts.isStringLiteral(expression.argumentExpression)
+  ) {
+    return { owner: expression.expression.text, property: expression.argumentExpression.text };
+  }
+  return undefined;
+}
+
 function assertionBindings(sourceFile: ts.SourceFile): {
   functions: Set<string>;
   namespaces: Set<string>;
@@ -149,6 +170,38 @@ function assertionBindings(sourceFile: ts.SourceFile): {
       for (const element of clause.namedBindings.elements) {
         const imported = element.propertyName?.text ?? element.name.text;
         if (imported === "expect") expectations.add(element.name.text);
+      }
+    }
+  }
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const declaration of topLevelVariableDeclarations(sourceFile)) {
+      if (!ts.isIdentifier(declaration.name) || !declaration.initializer) continue;
+      const local = declaration.name.text;
+      const initializer = declaration.initializer;
+      if (ts.isIdentifier(initializer)) {
+        if (functions.has(initializer.text) && !functions.has(local)) {
+          functions.add(local);
+          changed = true;
+        }
+        if (namespaces.has(initializer.text) && !namespaces.has(local)) {
+          namespaces.add(local);
+          changed = true;
+        }
+        if (expectations.has(initializer.text) && !expectations.has(local)) {
+          expectations.add(local);
+          changed = true;
+        }
+        continue;
+      }
+      const access = accessedProperty(initializer);
+      if (!access || !namespaces.has(access.owner)) continue;
+      const target = access.property === "strict" ? namespaces : functions;
+      if (!target.has(local)) {
+        target.add(local);
+        changed = true;
       }
     }
   }
@@ -232,6 +285,32 @@ function cucumberStepBindings(sourceFile: ts.SourceFile): {
     }
     for (const element of namedBindings.elements) {
       add(element.name.text, element.propertyName?.text ?? element.name.text);
+    }
+  }
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const declaration of topLevelVariableDeclarations(sourceFile)) {
+      if (!ts.isIdentifier(declaration.name) || !declaration.initializer) continue;
+      const local = declaration.name.text;
+      const initializer = declaration.initializer;
+      if (ts.isIdentifier(initializer)) {
+        const kind = functions.get(initializer.text);
+        if (kind && !functions.has(local)) {
+          functions.set(local, kind);
+          changed = true;
+        }
+        if (namespaces.has(initializer.text) && !namespaces.has(local)) {
+          namespaces.add(local);
+          changed = true;
+        }
+        continue;
+      }
+      const access = accessedProperty(initializer);
+      if (!access || !namespaces.has(access.owner) || functions.has(local)) continue;
+      add(local, access.property);
+      if (functions.has(local)) changed = true;
     }
   }
   return { functions, namespaces };
