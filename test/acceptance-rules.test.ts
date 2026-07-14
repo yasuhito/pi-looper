@@ -352,6 +352,25 @@ outcome("結果", function () { this.observed = this.code; });
     );
   });
 
+  it("rejects an assigned alias of a Then registration without an assertion", () => {
+    const source = `import { Then } from "@cucumber/cucumber";
+let result;
+result = Then;
+result("検証は安全のため拒否される", () => {});`;
+    expect(checkAcceptanceRules(sources({ stepDefinitions: [{ path: "bad.steps.ts", source }] }))).toContain(
+      "bad.steps.ts:4: Then step definition must contain exactly one direct assertion (found 0)",
+    );
+  });
+
+  it("rejects a dynamic step definition pattern", () => {
+    const source = `import { Given } from "@cucumber/cucumber";
+const outcomePattern = "検証は安全のため拒否される";
+Given(outcomePattern, () => {});`;
+    expect(checkAcceptanceRules(sources({ stepDefinitions: [{ path: "bad.steps.ts", source }] }))).toContain(
+      "bad.steps.ts:3: step definition pattern must be a string or regular expression literal",
+    );
+  });
+
   it("rejects a Then phrase registered through Given", () => {
     const source = validSteps.replace(
       'Then("検証は安全のため拒否される", function () { assert.equal(this.code, 1); });',

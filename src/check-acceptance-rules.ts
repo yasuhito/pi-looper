@@ -345,22 +345,38 @@ function cucumberStepBindings(sourceFile: ts.SourceFile): {
     }
   }
 
+  const aliases: Array<{ name: ts.BindingName; initializer: ts.Expression }> = topLevelVariableDeclarations(sourceFile)
+    .filter(
+      (declaration): declaration is ts.VariableDeclaration & { initializer: ts.Expression } =>
+        declaration.initializer !== undefined,
+    )
+    .map((declaration) => ({ name: declaration.name, initializer: declaration.initializer }));
+  for (const statement of sourceFile.statements) {
+    if (
+      ts.isExpressionStatement(statement) &&
+      ts.isBinaryExpression(statement.expression) &&
+      statement.expression.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      ts.isIdentifier(statement.expression.left)
+    ) {
+      aliases.push({ name: statement.expression.left, initializer: statement.expression.right });
+    }
+  }
+
   let changed = true;
   while (changed) {
     changed = false;
-    for (const declaration of topLevelVariableDeclarations(sourceFile)) {
-      if (!declaration.initializer) continue;
-      const initializer = unparenthesized(declaration.initializer);
-      if (ts.isObjectBindingPattern(declaration.name) && ts.isIdentifier(initializer) && namespaces.has(initializer.text)) {
-        for (const element of declaration.name.elements) {
+    for (const alias of aliases) {
+      const initializer = unparenthesized(alias.initializer);
+      if (ts.isObjectBindingPattern(alias.name) && ts.isIdentifier(initializer) && namespaces.has(initializer.text)) {
+        for (const element of alias.name.elements) {
           if (!ts.isIdentifier(element.name) || functions.has(element.name.text)) continue;
           add(element.name.text, element.propertyName?.getText(sourceFile) ?? element.name.text);
           if (functions.has(element.name.text)) changed = true;
         }
         continue;
       }
-      if (!ts.isIdentifier(declaration.name)) continue;
-      const local = declaration.name.text;
+      if (!ts.isIdentifier(alias.name)) continue;
+      const local = alias.name.text;
       if (ts.isIdentifier(initializer)) {
         const kind = functions.get(initializer.text);
         if (kind && !functions.has(local)) {
@@ -445,20 +461,23 @@ function featureStepKinds(files: SourceFile[]): StepKindsByText {
   return kindsByText;
 }
 
-function matchedStepKinds(expression: ts.Expression | undefined, kindsByText: StepKindsByText): Set<EffectiveStepKind> {
-  if (!expression) return new Set();
+function matchedStepKinds(
+  expression: ts.Expression | undefined,
+  kindsByText: StepKindsByText,
+): Set<EffectiveStepKind> | undefined {
+  if (!expression) return undefined;
   const normalized = unparenthesized(expression);
   if (ts.isStringLiteral(normalized) || ts.isNoSubstitutionTemplateLiteral(normalized)) {
     return new Set(kindsByText.get(normalized.text) ?? []);
   }
-  if (!ts.isRegularExpressionLiteral(normalized)) return new Set();
+  if (!ts.isRegularExpressionLiteral(normalized)) return undefined;
   const match = normalized.text.match(/^\/(.*)\/([a-z]*)$/s);
-  if (!match) return new Set();
+  if (!match) return undefined;
   let pattern: RegExp;
   try {
     pattern = new RegExp(match[1], match[2]);
   } catch {
-    return new Set();
+    return undefined;
   }
   const kinds = new Set<EffectiveStepKind>();
   for (const [text, textKinds] of kindsByText) {
@@ -495,6 +514,8 @@ function checkStepDefinitions(
       const matchedKinds = matchedStepKinds(node.arguments[0], kindsByText);
       if (kind === "defineStep") {
         errors.push(`${file.path}:${line}: defineStep is not allowed; use Given, When, or Then`);
+      } else if (!matchedKinds) {
+        errors.push(`${file.path}:${line}: step definition pattern must be a string or regular expression literal`);
       } else if (matchedKinds.size > 1) {
         errors.push(`${file.path}:${line}: step definition matches multiple Gherkin step kinds`);
       } else if (matchedKinds.size === 1 && !matchedKinds.has(kind)) {
