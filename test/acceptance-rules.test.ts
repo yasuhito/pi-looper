@@ -52,6 +52,36 @@ describe("acceptance test rules", () => {
     ).toContain("bad.feature.md: front matter is not allowed");
   });
 
+  it("rejects a language directive", () => {
+    expect(
+      checkAcceptanceRules(sources({
+        features: [{ path: "bad.feature.md", source: `# language: ja\n${validFeature}` }],
+      })),
+    ).toContain("bad.feature.md:1: language directives are not allowed");
+  });
+
+  it("rejects prose before the Feature heading", () => {
+    expect(
+      checkAcceptanceRules(sources({
+        features: [{ path: "bad.feature.md", source: `前置きの説明\n\n${validFeature}` }],
+      })),
+    ).toContain("bad.feature.md:1: file must start with an explicit Feature heading");
+  });
+
+  it("rejects hyphen Step bullets", () => {
+    const source = validFeature.replaceAll(/^\* /gm, "- ");
+    expect(checkAcceptanceRules(sources({ features: [{ path: "bad.feature.md", source }] }))).toContain(
+      "bad.feature.md:7: Step bullets must use '*' (found '-')",
+    );
+  });
+
+  it("rejects plus Step bullets", () => {
+    const source = validFeature.replaceAll(/^\* /gm, "+ ");
+    expect(checkAcceptanceRules(sources({ features: [{ path: "bad.feature.md", source }] }))).toContain(
+      "bad.feature.md:7: Step bullets must use '*' (found '+')",
+    );
+  });
+
   it("rejects a scenario with two result steps", () => {
     const source = validFeature.replace(
       "* ならば 検証は安全のため拒否される",
@@ -140,6 +170,36 @@ describe("acceptance test rules", () => {
     ];
     expect(checkAcceptanceRules(sources({ helpers }))).toContain(
       "acceptance/support/helper.ts: assertions are not allowed in acceptance helpers",
+    );
+  });
+
+  it("rejects a strict named import assertion in an acceptance helper", () => {
+    const helpers = [
+      {
+        path: "acceptance/support/helper.ts",
+        source: 'import { strict as assert } from "node:assert"; assert.ok(true);',
+      },
+    ];
+    expect(checkAcceptanceRules(sources({ helpers }))).toContain(
+      "acceptance/support/helper.ts: assertions are not allowed in acceptance helpers",
+    );
+  });
+
+  it("rejects a strict named import assertion in a Given definition", () => {
+    const source = validSteps
+      .replace('import assert from "node:assert/strict";', 'import { strict as assert } from "node:assert";')
+      .replace("this.tracked = true;", "assert.ok(true); this.tracked = true;");
+    expect(checkAcceptanceRules(sources({ stepDefinitions: [{ path: "bad.steps.ts", source }] }))).toContain(
+      "bad.steps.ts:4: Given step definition must not contain assertions",
+    );
+  });
+
+  it("rejects a strict named import assertion in a When definition", () => {
+    const source = validSteps
+      .replace('import assert from "node:assert/strict";', 'import { strict as assert } from "node:assert";')
+      .replace("this.code = 1;", "assert.ok(true); this.code = 1;");
+    expect(checkAcceptanceRules(sources({ stepDefinitions: [{ path: "bad.steps.ts", source }] }))).toContain(
+      "bad.steps.ts:5: When step definition must not contain assertions",
     );
   });
 

@@ -24,7 +24,11 @@ function scenarios(document: GherkinDocument): Scenario[] {
 
 function checkFeature(file: SourceFile): string[] {
   const errors: string[] = [];
+  const lines = file.source.split(/\r?\n/);
   if (/^(?:---|\+\+\+)(?:\r?\n|$)/.test(file.source)) errors.push(`${file.path}: front matter is not allowed`);
+  if (/^\s*#\s*language\s*:/.test(lines[0] ?? "")) {
+    errors.push(`${file.path}:1: language directives are not allowed`);
+  }
   const envelopes = generateMessages(file.source, file.path, SourceMediaType.TEXT_X_CUCUMBER_GHERKIN_MARKDOWN, {
     defaultDialect: "ja",
     includeGherkinDocument: true,
@@ -36,7 +40,17 @@ function checkFeature(file: SourceFile): string[] {
     if (envelope.parseError)
       errors.push(`${file.path}:${envelope.parseError.source?.location.line ?? 1}: ${envelope.parseError.message}`);
     if (!envelope.gherkinDocument) continue;
+    const feature = envelope.gherkinDocument.feature;
+    if (!feature?.keyword || feature.location.line !== 1) {
+      errors.push(`${file.path}:1: file must start with an explicit Feature heading`);
+    }
     for (const scenario of scenarios(envelope.gherkinDocument)) {
+      for (const step of scenario.steps) {
+        const marker = lines[step.location.line - 1]?.match(/^\s*([-+*])\s/)?.[1];
+        if (marker && marker !== "*") {
+          errors.push(`${file.path}:${step.location.line}: Step bullets must use '*' (found '${marker}')`);
+        }
+      }
       const resultCount = scenario.steps.filter((step) => step.keywordType === "Outcome").length;
       if (resultCount !== 1) {
         errors.push(
@@ -71,7 +85,11 @@ function assertionBindings(sourceFile: ts.SourceFile): {
       if (clause?.namedBindings && ts.isNamespaceImport(clause.namedBindings))
         namespaces.add(clause.namedBindings.name.text);
       if (clause?.namedBindings && ts.isNamedImports(clause.namedBindings)) {
-        for (const element of clause.namedBindings.elements) functions.add(element.name.text);
+        for (const element of clause.namedBindings.elements) {
+          const imported = element.propertyName?.text ?? element.name.text;
+          if (imported === "strict") namespaces.add(element.name.text);
+          else functions.add(element.name.text);
+        }
       }
     }
     if (

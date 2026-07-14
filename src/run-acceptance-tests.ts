@@ -6,8 +6,14 @@ import path from "node:path";
 import { checkAcceptanceRules, loadAcceptanceSources } from "./check-acceptance-rules";
 
 type CucumberEnvelope = {
+  testCase?: { id: string; testSteps: { id: string; pickleStepId?: string }[] };
+  testCaseStarted?: { id: string; testCaseId: string };
   testCaseFinished?: { testCaseStartedId: string; willBeRetried: boolean };
-  testStepFinished?: { testCaseStartedId: string; testStepResult?: { status?: string } };
+  testStepFinished?: {
+    testCaseStartedId: string;
+    testStepId: string;
+    testStepResult?: { status?: string };
+  };
 };
 
 export function countCompletedTestCases(messagePath: string): number {
@@ -17,20 +23,39 @@ export function countCompletedTestCases(messagePath: string): number {
     .split("\n")
     .filter(Boolean)
     .map((line) => JSON.parse(line) as CucumberEnvelope);
-  const testCasesWithExecutedSteps = new Set(
+  const pickleStepIdsByTestCase = new Map(
+    envelopes
+      .filter((envelope): envelope is CucumberEnvelope & { testCase: NonNullable<CucumberEnvelope["testCase"]> } =>
+        Boolean(envelope.testCase),
+      )
+      .map((envelope) => [
+        envelope.testCase.id,
+        new Set(envelope.testCase.testSteps.filter((step) => step.pickleStepId).map((step) => step.id)),
+      ]),
+  );
+  const testCaseIdByStartedId = new Map(
     envelopes
       .filter(
-        (envelope) =>
-          envelope.testStepFinished?.testStepResult?.status !== undefined &&
-          envelope.testStepFinished.testStepResult.status !== "SKIPPED",
+        (envelope): envelope is CucumberEnvelope & {
+          testCaseStarted: NonNullable<CucumberEnvelope["testCaseStarted"]>;
+        } => Boolean(envelope.testCaseStarted),
       )
-      .map((envelope) => envelope.testStepFinished?.testCaseStartedId as string),
+      .map((envelope) => [envelope.testCaseStarted.id, envelope.testCaseStarted.testCaseId]),
   );
+  const testCasesWithExecutedPickleSteps = new Set<string>();
+  for (const envelope of envelopes) {
+    const finished = envelope.testStepFinished;
+    if (!finished?.testStepResult?.status || finished.testStepResult.status === "SKIPPED") continue;
+    const testCaseId = testCaseIdByStartedId.get(finished.testCaseStartedId);
+    if (testCaseId && pickleStepIdsByTestCase.get(testCaseId)?.has(finished.testStepId)) {
+      testCasesWithExecutedPickleSteps.add(finished.testCaseStartedId);
+    }
+  }
   return envelopes.filter(
     (envelope) =>
       envelope.testCaseFinished &&
       !envelope.testCaseFinished.willBeRetried &&
-      testCasesWithExecutedSteps.has(envelope.testCaseFinished.testCaseStartedId),
+      testCasesWithExecutedPickleSteps.has(envelope.testCaseFinished.testCaseStartedId),
   ).length;
 }
 
