@@ -92,6 +92,26 @@ describe("acceptance test rules", () => {
     );
   });
 
+  it("counts a Feature Background result in each scenario", () => {
+    const source = validFeature.replace(
+      "## シナリオ:",
+      "## 背景:\n\n* ならば 共通の結果がある\n\n## シナリオ:",
+    );
+    expect(checkAcceptanceRules(sources({ features: [{ path: "bad.feature.md", source }] }))).toContain(
+      "bad.feature.md:9: scenario must contain exactly one result step (found 2)",
+    );
+  });
+
+  it("counts a Rule Background result in each scenario", () => {
+    const source = validFeature.replace(
+      "## シナリオ:",
+      "## ルール: 安全規則\n\n### 背景:\n\n* ならば 共通の結果がある\n\n### シナリオ:",
+    );
+    expect(checkAcceptanceRules(sources({ features: [{ path: "bad.feature.md", source }] }))).toContain(
+      "bad.feature.md:11: scenario must contain exactly one result step (found 2)",
+    );
+  });
+
   it("rejects And after Then", () => {
     const source = validFeature.replace(
       "* ならば 検証は安全のため拒否される",
@@ -137,6 +157,22 @@ describe("acceptance test rules", () => {
     const source = validSteps.replace("assert.equal(this.code, 1);", "expect(this.code);");
     expect(checkAcceptanceRules(sources({ stepDefinitions: [{ path: "bad.steps.ts", source }] }))).toContain(
       "bad.steps.ts:6: Then step definition must contain exactly one direct assertion (found 0)",
+    );
+  });
+
+  it("enforces step assertion rules for aliased CommonJS bindings", () => {
+    const source = `
+const assert = require("node:assert/strict");
+const { Given: setup, When, Then: outcome } = require("@cucumber/cucumber");
+setup("前提", function () { assert.ok(true); });
+When("操作", function () { this.code = 1; });
+outcome("結果", function () { this.observed = this.code; });
+`;
+    expect(checkAcceptanceRules(sources({ stepDefinitions: [{ path: "bad.steps.ts", source }] }))).toEqual(
+      expect.arrayContaining([
+        "bad.steps.ts:4: Given step definition must not contain assertions",
+        "bad.steps.ts:6: Then step definition must contain exactly one direct assertion (found 0)",
+      ]),
     );
   });
 
@@ -222,6 +258,44 @@ describe("acceptance test rules", () => {
     );
     expect(checkAcceptanceRules(sources({ stepDefinitions: [{ path: "bad.steps.ts", source }] }))).toContain(
       "bad.steps.ts: assertions are not allowed outside step definition callbacks",
+    );
+  });
+
+  it.each([
+    ["language", "language='en'"],
+    ["strict", "strict=false"],
+    ["dryRun", "dryRun=true"],
+    ["retry", "retry=2"],
+    ["paths", "paths=[]"],
+  ])("rejects a subsequent mutation of Cucumber %s", (_name, mutation) => {
+    const config = sources().config;
+    config.source += `\nmodule.exports.default.${mutation};`;
+    expect(checkAcceptanceRules(sources({ config }))).toContain(
+      "cucumber.cjs: a literal default Cucumber profile is required",
+    );
+  });
+
+  it("uses the last duplicate Cucumber property value", () => {
+    const config = sources().config;
+    config.source = config.source.replace("language: 'ja'", "language: 'ja', language: 'en'");
+    expect(checkAcceptanceRules(sources({ config }))).toContain(
+      "cucumber.cjs: Cucumber language must be explicitly set to 'ja'",
+    );
+  });
+
+  it("rejects a spread in the Cucumber profile", () => {
+    const config = sources().config;
+    config.source = config.source.replace("default: {", "default: { ...other,");
+    expect(checkAcceptanceRules(sources({ config }))).toContain(
+      "cucumber.cjs: a literal default Cucumber profile is required",
+    );
+  });
+
+  it("rejects a computed Cucumber profile property", () => {
+    const config = sources().config;
+    config.source = config.source.replace("language: 'ja'", "['language']: 'ja'");
+    expect(checkAcceptanceRules(sources({ config }))).toContain(
+      "cucumber.cjs: a literal default Cucumber profile is required",
     );
   });
 

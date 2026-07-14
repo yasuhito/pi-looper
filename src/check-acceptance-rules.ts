@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { generateMessages } from "@cucumber/gherkin";
-import { IdGenerator, SourceMediaType, type GherkinDocument, type Scenario } from "@cucumber/messages";
+import { IdGenerator, SourceMediaType, type GherkinDocument, type Scenario, type Step } from "@cucumber/messages";
 import ts from "typescript";
 
 export type SourceFile = { path: string; source: string };
@@ -13,11 +13,24 @@ export type AcceptanceSource = {
   helpers: SourceFile[];
 };
 
-function scenarios(document: GherkinDocument): Scenario[] {
-  const found: Scenario[] = [];
-  for (const child of document.feature?.children ?? []) {
-    if (child.scenario) found.push(child.scenario);
-    for (const ruleChild of child.rule?.children ?? []) if (ruleChild.scenario) found.push(ruleChild.scenario);
+type EffectiveScenario = { scenario: Scenario; steps: Step[] };
+
+function scenarios(document: GherkinDocument): EffectiveScenario[] {
+  const found: EffectiveScenario[] = [];
+  const featureChildren = document.feature?.children ?? [];
+  const featureBackground = featureChildren.find((child) => child.background)?.background?.steps ?? [];
+  for (const child of featureChildren) {
+    if (child.scenario) found.push({ scenario: child.scenario, steps: [...featureBackground, ...child.scenario.steps] });
+    if (!child.rule) continue;
+    const ruleBackground = child.rule.children.find((ruleChild) => ruleChild.background)?.background?.steps ?? [];
+    for (const ruleChild of child.rule.children) {
+      if (ruleChild.scenario) {
+        found.push({
+          scenario: ruleChild.scenario,
+          steps: [...featureBackground, ...ruleBackground, ...ruleChild.scenario.steps],
+        });
+      }
+    }
   }
   return found;
 }
@@ -44,21 +57,21 @@ function checkFeature(file: SourceFile): string[] {
     if (!feature?.keyword || feature.location.line !== 1) {
       errors.push(`${file.path}:1: file must start with an explicit Feature heading`);
     }
-    for (const scenario of scenarios(envelope.gherkinDocument)) {
-      for (const step of scenario.steps) {
+    for (const { scenario, steps } of scenarios(envelope.gherkinDocument)) {
+      for (const step of steps) {
         const marker = lines[step.location.line - 1]?.match(/^\s*([-+*])\s/)?.[1];
         if (marker && marker !== "*") {
           errors.push(`${file.path}:${step.location.line}: Step bullets must use '*' (found '${marker}')`);
         }
       }
-      const resultCount = scenario.steps.filter((step) => step.keywordType === "Outcome").length;
+      const resultCount = steps.filter((step) => step.keywordType === "Outcome").length;
       if (resultCount !== 1) {
         errors.push(
           `${file.path}:${scenario.location.line}: scenario must contain exactly one result step (found ${resultCount})`,
         );
       }
       let resultSeen = false;
-      for (const step of scenario.steps) {
+      for (const step of steps) {
         if (step.keywordType === "Outcome") resultSeen = true;
         else if (resultSeen && step.keywordType === "Conjunction") {
           errors.push(`${file.path}:${step.location.line}: And/But after Then is not allowed`);
@@ -67,6 +80,20 @@ function checkFeature(file: SourceFile): string[] {
     }
   }
   return errors;
+}
+
+function requiredModule(expression: ts.Expression | undefined): string | undefined {
+  if (
+    !expression ||
+    !ts.isCallExpression(expression) ||
+    !ts.isIdentifier(expression.expression) ||
+    expression.expression.text !== "require" ||
+    expression.arguments.length !== 1 ||
+    !ts.isStringLiteral(expression.arguments[0])
+  ) {
+    return undefined;
+  }
+  return expression.arguments[0].text;
 }
 
 function assertionBindings(sourceFile: ts.SourceFile): {
@@ -78,6 +105,22 @@ function assertionBindings(sourceFile: ts.SourceFile): {
   const namespaces = new Set<string>();
   const expectations = new Set<string>();
   for (const statement of sourceFile.statements) {
+    if (ts.isVariableStatement(statement)) {
+      for (const declaration of statement.declarationList.declarations) {
+        const module = requiredModule(declaration.initializer);
+        if (!module?.startsWith("node:assert")) continue;
+        if (ts.isIdentifier(declaration.name)) namespaces.add(declaration.name.text);
+        if (ts.isObjectBindingPattern(declaration.name)) {
+          for (const element of declaration.name.elements) {
+            if (!ts.isIdentifier(element.name)) continue;
+            const imported = element.propertyName?.getText(sourceFile) ?? element.name.text;
+            if (imported === "strict") namespaces.add(element.name.text);
+            else functions.add(element.name.text);
+          }
+        }
+      }
+      continue;
+    }
     if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
     const clause = statement.importClause;
     if (statement.moduleSpecifier.text.startsWith("node:assert")) {
@@ -139,9 +182,31 @@ function directAssertions(
 
 type CucumberStepKind = "Given" | "When" | "Then" | "defineStep";
 
-function cucumberStepBindings(sourceFile: ts.SourceFile): Map<string, CucumberStepKind> {
-  const bindings = new Map<string, CucumberStepKind>();
+function cucumberStepBindings(sourceFile: ts.SourceFile): {
+  functions: Map<string, CucumberStepKind>;
+  namespaces: Set<string>;
+} {
+  const functions = new Map<string, CucumberStepKind>();
+  const namespaces = new Set<string>();
+  const add = (local: string, imported: string): void => {
+    if (imported === "Given" || imported === "When" || imported === "Then" || imported === "defineStep") {
+      functions.set(local, imported);
+    }
+  };
   for (const statement of sourceFile.statements) {
+    if (ts.isVariableStatement(statement)) {
+      for (const declaration of statement.declarationList.declarations) {
+        if (requiredModule(declaration.initializer) !== "@cucumber/cucumber") continue;
+        if (ts.isIdentifier(declaration.name)) namespaces.add(declaration.name.text);
+        if (ts.isObjectBindingPattern(declaration.name)) {
+          for (const element of declaration.name.elements) {
+            if (!ts.isIdentifier(element.name)) continue;
+            add(element.name.text, element.propertyName?.getText(sourceFile) ?? element.name.text);
+          }
+        }
+      }
+      continue;
+    }
     if (
       !ts.isImportDeclaration(statement) ||
       !ts.isStringLiteral(statement.moduleSpecifier) ||
@@ -152,13 +217,26 @@ function cucumberStepBindings(sourceFile: ts.SourceFile): Map<string, CucumberSt
       continue;
     }
     for (const element of statement.importClause.namedBindings.elements) {
-      const imported = element.propertyName?.text ?? element.name.text;
-      if (imported === "Given" || imported === "When" || imported === "Then" || imported === "defineStep") {
-        bindings.set(element.name.text, imported);
-      }
+      add(element.name.text, element.propertyName?.text ?? element.name.text);
     }
   }
-  return bindings;
+  return { functions, namespaces };
+}
+
+function cucumberStepKind(
+  expression: ts.LeftHandSideExpression,
+  bindings: ReturnType<typeof cucumberStepBindings>,
+): CucumberStepKind | undefined {
+  if (ts.isIdentifier(expression)) return bindings.functions.get(expression.text);
+  if (
+    ts.isPropertyAccessExpression(expression) &&
+    ts.isIdentifier(expression.expression) &&
+    bindings.namespaces.has(expression.expression.text)
+  ) {
+    const name = expression.name.text;
+    if (name === "Given" || name === "When" || name === "Then" || name === "defineStep") return name;
+  }
+  return undefined;
 }
 
 function checkStepDefinitions(file: SourceFile): string[] {
@@ -168,8 +246,12 @@ function checkStepDefinitions(file: SourceFile): string[] {
   const stepBindings = cucumberStepBindings(sourceFile);
   const assertionsInStepCallbacks = new Set<ts.CallExpression>();
   const visit = (node: ts.Node): void => {
-    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && stepBindings.has(node.expression.text)) {
-      const kind = stepBindings.get(node.expression.text) as CucumberStepKind;
+    if (ts.isCallExpression(node)) {
+      const kind = cucumberStepKind(node.expression, stepBindings);
+      if (!kind) {
+        ts.forEachChild(node, visit);
+        return;
+      }
       const implementation = node.arguments.find(
         (argument) => ts.isFunctionExpression(argument) || ts.isArrowFunction(argument),
       );
@@ -222,7 +304,7 @@ function checkHelper(file: SourceFile): string[] {
 }
 
 function objectProperty(object: ts.ObjectLiteralExpression, name: string): ts.Expression | undefined {
-  const property = object.properties.find(
+  const property = [...object.properties].reverse().find(
     (candidate) =>
       ts.isPropertyAssignment(candidate) &&
       ((ts.isIdentifier(candidate.name) && candidate.name.text === name) ||
@@ -247,18 +329,35 @@ function sameStrings(actual: string[] | undefined, expected: string[]): boolean 
   );
 }
 
+function hasOnlyStaticProperties(object: ts.ObjectLiteralExpression): boolean {
+  return object.properties.every(
+    (property) =>
+      ts.isPropertyAssignment(property) &&
+      (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)),
+  );
+}
+
 function checkCucumberConfig(config: SourceFile): string[] {
   const errors: string[] = [];
   const sourceFile = ts.createSourceFile(config.path, config.source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
   let profile: ts.ObjectLiteralExpression | undefined;
-  for (const statement of sourceFile.statements) {
-    if (!ts.isExpressionStatement(statement) || !ts.isBinaryExpression(statement.expression)) continue;
+  const meaningfulStatements = sourceFile.statements.filter(
+    (statement) => !(ts.isExpressionStatement(statement) && ts.isStringLiteral(statement.expression)),
+  );
+  const statement = meaningfulStatements.at(-1);
+  if (statement && ts.isExpressionStatement(statement) && ts.isBinaryExpression(statement.expression)) {
     const assignment = statement.expression;
-    if (assignment.operatorToken.kind !== ts.SyntaxKind.EqualsToken || !ts.isObjectLiteralExpression(assignment.right))
-      continue;
-    if (assignment.left.getText(sourceFile) !== "module.exports") continue;
-    const candidate = objectProperty(assignment.right, "default");
-    if (candidate && ts.isObjectLiteralExpression(candidate)) profile = candidate;
+    if (
+      assignment.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      assignment.left.getText(sourceFile) === "module.exports" &&
+      ts.isObjectLiteralExpression(assignment.right) &&
+      hasOnlyStaticProperties(assignment.right)
+    ) {
+      const candidate = objectProperty(assignment.right, "default");
+      if (candidate && ts.isObjectLiteralExpression(candidate) && hasOnlyStaticProperties(candidate)) {
+        profile = candidate;
+      }
+    }
   }
   if (!profile) return [`${config.path}: a literal default Cucumber profile is required`];
 
