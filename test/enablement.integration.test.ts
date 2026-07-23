@@ -556,6 +556,17 @@ describe("enablement command integration", () => {
     expect(extension.messages.at(-1)).toContain("linked worktrees cannot be enabled");
   });
 
+  it("points linked-worktree rejection to a primary checkout with an external Git directory", async () => {
+    const { root, repoPath } = fixtureRepository({ separateGitDir: true });
+    const linkedPath = path.join(root, "linked");
+    git(repoPath, ["worktree", "add", "--quiet", "-b", "linked-separate-git-dir", linkedPath]);
+    const extension = await loadExtension(root);
+
+    await invoke(extension.commands.get("deadloop-enable")!, linkedPath);
+
+    expect(extension.messages.at(-1)).toContain(`use the primary checkout: ${repoPath}`);
+  });
+
   it("enables a primary checkout with an external separate Git directory", async () => {
     const { root, repoPath } = fixtureRepository({ separateGitDir: true });
     const extension = await loadExtension(root);
@@ -749,7 +760,7 @@ describe("enablement command integration", () => {
     expect(existsSync(path.join(root, ".pi", "agent", "deadloop", lockName))).toBe(false);
   });
 
-  it("retains scheduler ownership until a blocked precheck quiesces before re-enable", async () => {
+  it("releases scheduler ownership promptly without overlapping a blocked stale precheck", async () => {
     const { root, repoPath } = fixtureRepository();
     writeConfig(root, repoPath);
     const configPath = path.join(root, ".pi", "agent", "deadloop", "projects.json");
@@ -780,15 +791,26 @@ describe("enablement command integration", () => {
     const oldToken = JSON.parse(readFileSync(lockPath, "utf8")).token;
 
     await invoke(extension.commands.get("deadloop-disable")!, repoPath);
+    const releasedWhileBlocked = !existsSync(lockPath);
+    const schedulerStatePath = path.join(root, ".pi", "agent", "deadloop", "state.json");
+    const stateAfterDisable = JSON.parse(readFileSync(schedulerStatePath, "utf8"));
+    const resultAfterDisable = (Object.values(stateAfterDisable.automations)[0] as { lastResult?: string }).lastResult;
     await invoke(extension.commands.get("deadloop-enable")!, repoPath);
-    const tokenWhileBlocked = JSON.parse(readFileSync(lockPath, "utf8")).token;
+    const noOverlapWhileBlocked = !existsSync(lockPath);
     releasePrecheck();
     await tick;
     const newToken = JSON.parse(readFileSync(lockPath, "utf8")).token;
 
-    expect({ retained: tokenWhileBlocked === oldToken, replacedAfterQuiescence: newToken !== oldToken }).toEqual({
-      retained: true,
-      replacedAfterQuiescence: true,
+    expect({
+      releasedWhileBlocked,
+      noOverlapWhileBlocked,
+      staleRunDidNotSave: (Object.values(JSON.parse(readFileSync(schedulerStatePath, "utf8")).automations)[0] as { lastResult?: string }).lastResult === resultAfterDisable,
+      restartedAfterQuiescence: newToken !== oldToken,
+    }).toEqual({
+      releasedWhileBlocked: true,
+      noOverlapWhileBlocked: true,
+      staleRunDidNotSave: true,
+      restartedAfterQuiescence: true,
     });
   });
 

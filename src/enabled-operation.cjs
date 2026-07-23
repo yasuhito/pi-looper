@@ -61,9 +61,9 @@ function withEnabledProjectLock(project, operation, options = {}) {
   fs.mkdirSync(project.stateDir, { recursive: true });
   const lock = acquireLockSync(lockPath, { ...options, busyMessage: "enablement state is busy; operation stopped" });
   try {
-    assertEnabled(project);
+    const enabled = assertEnabled(project);
     options.afterAuthorization?.();
-    return operation();
+    return operation(enabled);
   } finally {
     releaseOwned(lockPath, lock.token);
   }

@@ -23,9 +23,10 @@ type FinalizeArgs = {
   checkCommand: string;
 };
 type CommandResult = { status: number; stdout: string; stderr: string };
+type EnabledProject = { githubRepo: string; githubAliases?: string[] };
 type FinalizeOps = {
   run(args: string[], timeoutMs?: number): CommandResult;
-  assertEnabled?: (project: { repoPath: string; githubRepo: string; stateDir: string; enabledAt: number }) => void;
+  assertEnabled?: (project: { repoPath: string; githubRepo: string; stateDir: string; enabledAt: number }) => EnabledProject;
 };
 
 function defaultRun(args: string[], timeoutMs?: number): CommandResult {
@@ -71,7 +72,7 @@ function finalizeBranchUpdate(args: FinalizeArgs, ops: FinalizeOps = { run: defa
   if (checked(ops, ["git", "-C", args.repo, "status", "--porcelain"])) throw new Error("branch-update worktree is dirty after checks");
 
   const project = { repoPath: args.projectRepo, githubRepo: args.githubRepo, stateDir: args.stateDir, enabledAt: args.enabledAt };
-  const guardAndPush = () => {
+  const guardAndPush = (enabled: EnabledProject) => {
     const pr = JSON.parse(
       checked(ops, [
         "gh",
@@ -90,7 +91,8 @@ function finalizeBranchUpdate(args: FinalizeArgs, ops: FinalizeOps = { run: defa
       ops,
       args.repo,
       args.remote,
-      args.githubRepo,
+      enabled.githubRepo,
+      enabled.githubAliases || [],
       MAX_GUARDED_OPERATION_MS,
     );
     checked(ops, ["git", "-C", args.repo, "push", "--porcelain", pushDestination, `HEAD:refs/heads/${args.branch}`], MAX_GUARDED_OPERATION_MS);
@@ -101,8 +103,7 @@ function finalizeBranchUpdate(args: FinalizeArgs, ops: FinalizeOps = { run: defa
     };
   };
   if (ops.assertEnabled) {
-    ops.assertEnabled(project);
-    return guardAndPush();
+    return guardAndPush(ops.assertEnabled(project));
   }
   return withEnabledProjectLock(project, guardAndPush);
 }

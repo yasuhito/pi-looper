@@ -769,12 +769,33 @@ async function commandExec(pi, command, args, timeout = 15_000) {
   return result;
 }
 
+function findCheckoutPointingToGitDir(commonDir) {
+  const absoluteCommonDir = path.resolve(commonDir);
+  try {
+    for (const entry of fs.readdirSync(path.dirname(absoluteCommonDir), { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const checkout = path.join(path.dirname(absoluteCommonDir), entry.name);
+      const gitFile = path.join(checkout, ".git");
+      if (!fs.existsSync(gitFile) || !fs.statSync(gitFile).isFile()) continue;
+      const match = /^gitdir: (.+)$/m.exec(fs.readFileSync(gitFile, "utf8"));
+      if (match && path.resolve(checkout, match[1]) === absoluteCommonDir) return checkout;
+    }
+  } catch {}
+  return "";
+}
+
 async function detectPrimaryCheckout(pi, cwd) {
   const repoPath = (await commandExec(pi, "git", ["-C", cwd, "rev-parse", "--show-toplevel"])).stdout.trim();
   const gitDir = (await commandExec(pi, "git", ["-C", cwd, "rev-parse", "--git-dir"])).stdout.trim();
   const commonDir = (await commandExec(pi, "git", ["-C", cwd, "rev-parse", "--git-common-dir"])).stdout.trim();
   if (isLinkedGitWorktree(cwd, gitDir, commonDir)) {
-    throw new Error(`linked worktrees cannot be enabled or disabled; use the primary checkout: ${path.dirname(path.resolve(cwd, commonDir))}`);
+    const configuredWorktree = await pi.exec("git", ["-C", cwd, "config", "--path", "--get", "core.worktree"], { timeout: 15_000 });
+    const worktreeList = (await commandExec(pi, "git", ["-C", cwd, "worktree", "list", "--porcelain"])).stdout;
+    const primaryCheckout = configuredWorktree.code === 0
+      ? configuredWorktree.stdout.trim()
+      : findCheckoutPointingToGitDir(path.resolve(cwd, commonDir)) || worktreeList.match(/^worktree (.+)$/m)?.[1];
+    if (!primaryCheckout) throw new Error("linked worktree primary checkout could not be resolved");
+    throw new Error(`linked worktrees cannot be enabled or disabled; use the primary checkout: ${primaryCheckout}`);
   }
   return repoPath;
 }
@@ -878,12 +899,13 @@ async function prepareGithub(pi, githubRepo) {
     await commandExec(pi, "gh", ["label", "create", name, "-R", githubRepo, "--color", color]);
   }
 }
-function automationRunnerDeps(pi, ctx, project) {
+function automationRunnerDeps(pi, ctx, project, isCurrentSchedulerRun = () => true) {
   return {
     currentEnabledAt: () => project.enabledAt,
-    isEnabled: () => isProjectEnabled(project),
+    isEnabled: () => isCurrentSchedulerRun() && isProjectEnabled(project),
     isIdle: typeof ctx.isIdle === "function" ? () => ctx.isIdle() : undefined,
     notify: (message, level) => {
+      if (!isCurrentSchedulerRun()) return;
       try {
         ctx.ui.notify(message.replace(/^deadloop /, `${EXTENSION_NAME} `), level);
       } catch {}
@@ -895,9 +917,14 @@ function automationRunnerDeps(pi, ctx, project) {
       await runAutomationScript(pi, driverProject, driverAutomation, driverFile),
     runPrecheck: async (precheckProject, precheckAutomation, precheckFile) =>
       await runAutomationScript(pi, precheckProject, precheckAutomation, precheckFile),
-    saveState,
-    sendUserMessage: (prompt) => pi.sendUserMessage(prompt),
+    saveState: (state) => {
+      if (isCurrentSchedulerRun()) saveState(state);
+    },
+    sendUserMessage: (prompt) => {
+      if (isCurrentSchedulerRun()) pi.sendUserMessage(prompt);
+    },
     sendUserMessageIfEnabled: (prompt) => {
+      if (!isCurrentSchedulerRun()) return false;
       try {
         return withEnabledProjectLock(
           { repoPath: project.repoPath, githubRepo: project.githubRepo, stateDir: STATE_DIR, enabledAt: project.enabledAt },
@@ -908,12 +935,14 @@ function automationRunnerDeps(pi, ctx, project) {
         throw error;
       }
     },
-    setStatus: (text) => setLooperStatus(ctx, text),
+    setStatus: (text) => {
+      if (isCurrentSchedulerRun()) setLooperStatus(ctx, text);
+    },
   };
 }
 
-async function runAutomation(pi, ctx, project, automation, dueSlot, state) {
-  await runScheduledAutomation(project, automation, dueSlot, state, automationRunnerDeps(pi, ctx, project));
+async function runAutomation(pi, ctx, project, automation, dueSlot, state, deps = automationRunnerDeps(pi, ctx, project)) {
+  await runScheduledAutomation(project, automation, dueSlot, state, deps);
 }
 
 function registerReportCommand(pi, name, description, customType, buildReport) {
@@ -956,6 +985,7 @@ export default function (pi) {
 
   async function tick(ctx) {
     if (!active) return;
+    const schedulerRun = active;
 
     let remainsEnabled = false;
     try {
@@ -994,7 +1024,7 @@ export default function (pi) {
       const state = loadState();
       updateStatus(ctx, project, state);
 
-      const deps = automationRunnerDeps(pi, ctx, project);
+      const deps = automationRunnerDeps(pi, ctx, project, () => active === schedulerRun && ownsLock);
       for (const automation of project.automations) {
         const entry = state.automations[automationStateKey(project, automation)] || {};
         state.automations[automationStateKey(project, automation)] = entry;
@@ -1012,12 +1042,12 @@ export default function (pi) {
         const dueSlot = getDueSlot(automation, entry, now);
         if (!dueSlot) continue;
 
-        await runAutomation(pi, ctx, project, automation, dueSlot, state);
-        updateStatus(ctx, project, state);
+        await runAutomation(pi, ctx, project, automation, dueSlot, state, deps);
+        if (active === schedulerRun && ownsLock) updateStatus(ctx, project, state);
         break;
       }
 
-      saveState(state);
+      if (active === schedulerRun && ownsLock) saveState(state);
     } finally {
       running = false;
       if (stopRequested) {
@@ -1045,6 +1075,9 @@ export default function (pi) {
     pendingStart = null;
     if (running) {
       stopRequested = true;
+      if (ownsLock && active?.lockPath && active?.lockToken) releaseSchedulerLock(active.lockPath, active.lockToken);
+      ownsLock = false;
+      active = null;
       setLooperStatus(ctx, undefined);
       return;
     }

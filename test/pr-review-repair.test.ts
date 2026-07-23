@@ -48,7 +48,10 @@ function finalizeWith(
       checkCommand: "npm test",
     },
     {
-      assertEnabled: () => { if (headAfterAuthorization) observedHead = headAfterAuthorization; },
+      assertEnabled: () => {
+        if (headAfterAuthorization) observedHead = headAfterAuthorization;
+        return { githubRepo: "owner/repo", githubAliases: ["old/repo"] };
+      },
       run: (args: string[], timeoutMs?: number) => {
         commands.push(args);
         timeouts.push(timeoutMs);
@@ -206,6 +209,13 @@ describe("automatic PR review repair", () => {
     expect(() => finalizeWith([], head, undefined, [], "https://github.com/other/repo.git")).toThrow(
       "push remote origin does not resolve exclusively to owner/repo",
     );
+  });
+
+  it("accepts a renamed-repository alias recorded by locked enablement", () => {
+    const commands: string[][] = [];
+    finalizeWith(commands, head, undefined, [], "https://github.com/old/repo.git");
+
+    expect(commands.find((command) => command.includes("push"))?.[5]).toBe("https://github.com/old/repo.git");
   });
 
   it("pins the verified repair destination before a mutable remote can redirect the push", () => {

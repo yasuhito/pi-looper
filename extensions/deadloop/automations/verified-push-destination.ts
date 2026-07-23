@@ -11,6 +11,7 @@ function resolveVerifiedPushDestination(
   repo: string,
   remote: string,
   githubRepo: string,
+  githubAliases: string[],
   timeoutMs: number,
 ): string {
   const result = ops.run(["git", "-C", repo, "remote", "get-url", "--push", "--all", remote], timeoutMs);
@@ -18,8 +19,8 @@ function resolveVerifiedPushDestination(
     throw new Error((result.stderr || result.stdout || `push remote could not be resolved: ${remote}`).trim());
   }
   const urls = result.stdout.split(/\r?\n/).map((url) => url.trim()).filter(Boolean);
-  const expected = githubRepo.toLowerCase();
-  if (urls.length === 0 || urls.some((url) => githubRepoFromRemote(url).toLowerCase() !== expected)) {
+  const allowed = new Set([githubRepo, ...githubAliases].map((identity) => identity.toLowerCase()));
+  if (urls.length === 0 || urls.some((url) => !allowed.has(githubRepoFromRemote(url).toLowerCase()))) {
     throw new Error(`push remote ${remote} does not resolve exclusively to ${githubRepo}`);
   }
   return urls[0];
