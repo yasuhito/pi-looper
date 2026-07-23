@@ -25,7 +25,8 @@ const findings = [
   },
 ];
 
-function finalizeWith(commands: string[][], actualHead = head) {
+function finalizeWith(commands: string[][], actualHead = head, headAfterAuthorization?: string) {
+  let observedHead = actualHead;
   return finalizeReviewRepair(
     {
       repo: "/worktree",
@@ -40,7 +41,7 @@ function finalizeWith(commands: string[][], actualHead = head) {
       checkCommand: "npm test",
     },
     {
-      assertEnabled: () => {},
+      assertEnabled: () => { if (headAfterAuthorization) observedHead = headAfterAuthorization; },
       run: (args: string[]) => {
         commands.push(args);
         if (args[0] === "gh") {
@@ -50,7 +51,7 @@ function finalizeWith(commands: string[][], actualHead = head) {
               state: "OPEN",
               isCrossRepository: false,
               headRefName: "agent/issue-243",
-              headRefOid: actualHead,
+              headRefOid: observedHead,
             }),
             stderr: "",
           };
@@ -186,6 +187,13 @@ describe("automatic PR review repair", () => {
   it("does not push after a stale immediate head recheck", () => {
     const commands: string[][] = [];
     finalizeWith(commands, "c".repeat(40));
+
+    expect(commands.some((command) => command.includes("push"))).toBe(false);
+  });
+
+  it("rechecks the PR head after waiting for the enablement lock", () => {
+    const commands: string[][] = [];
+    finalizeWith(commands, head, "c".repeat(40));
 
     expect(commands.some((command) => command.includes("push"))).toBe(false);
   });

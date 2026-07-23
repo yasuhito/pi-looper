@@ -10,7 +10,8 @@ const {
 const head = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const base = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
-function finalizeWith(commands: string[][], actualHead = head) {
+function finalizeWith(commands: string[][], actualHead = head, headAfterAuthorization?: string) {
+  let observedHead = actualHead;
   return finalizeBranchUpdate(
     {
       repo: "/worktree",
@@ -26,7 +27,7 @@ function finalizeWith(commands: string[][], actualHead = head) {
       checkCommand: "npm test",
     },
     {
-      assertEnabled: () => {},
+      assertEnabled: () => { if (headAfterAuthorization) observedHead = headAfterAuthorization; },
       run: (args: string[]) => {
         commands.push(args);
         if (args[0] === "gh") {
@@ -36,7 +37,7 @@ function finalizeWith(commands: string[][], actualHead = head) {
               state: "OPEN",
               isCrossRepository: false,
               headRefName: "agent/issue-31",
-              headRefOid: actualHead,
+              headRefOid: observedHead,
             }),
             stderr: "",
           };
@@ -134,6 +135,13 @@ describe("PR branch-update safety", () => {
   it("does not push when the immediate PR-head check is stale", () => {
     const commands: string[][] = [];
     finalizeWith(commands, base);
+
+    expect(commands.some((command) => command.includes("push"))).toBe(false);
+  });
+
+  it("rechecks the PR head after waiting for the enablement lock", () => {
+    const commands: string[][] = [];
+    finalizeWith(commands, head, base);
 
     expect(commands.some((command) => command.includes("push"))).toBe(false);
   });

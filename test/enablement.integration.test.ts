@@ -36,7 +36,19 @@ function fixtureRepository() {
   const binDir = path.join(root, "bin");
   mkdirSync(binDir);
   const gitPath = path.join(binDir, "git");
-  writeFileSync(gitPath, "#!/bin/sh\nif [ \"$3 $4 $5\" = \"remote get-url origin\" ]; then echo https://github.com/owner/demo.git; else exec /usr/bin/git \"$@\"; fi\n");
+  writeFileSync(gitPath, `#!/bin/sh
+if [ "$3 $4" = "remote get-url" ]; then
+  repo="$2"
+  if printf '%s\\n' "$@" | grep -qx -- '--push'; then
+    urls=$(/usr/bin/git -C "$repo" config --get-all remote.origin.pushurl)
+    if [ -n "$urls" ]; then printf '%s\\n' "$urls"; else /usr/bin/git -C "$repo" config --get-all remote.origin.url; fi
+  else
+    /usr/bin/git -C "$repo" config --get-all remote.origin.url
+  fi
+else
+  exec /usr/bin/git "$@"
+fi
+`);
   chmodSync(gitPath, 0o755);
   return { root, repoPath };
 }
@@ -316,6 +328,54 @@ describe("enablement command integration", () => {
     await invoke(extension.commands.get("deadloop-enable")!, repoPath);
 
     expect(extension.messages.at(-1)).toContain("another session (pid 4242)");
+  });
+
+  it("takes scheduler ownership after the original owner releases its lock", async () => {
+    const { root, repoPath } = fixtureRepository();
+    writeConfig(root, repoPath);
+    const stateDir = path.join(root, ".pi", "agent", "deadloop");
+    const lockPath = path.join(stateDir, schedulerLockName({ id: "demo", repoPath, githubRepo: "owner/demo" }));
+    writeFileSync(lockPath, JSON.stringify({ pid: 4242, token: "owner" }));
+    vi.spyOn(process, "kill").mockImplementation(((pid: number, signal?: number | string) => {
+      if (pid === 4242 && signal === 0) return true;
+      return true;
+    }) as typeof process.kill);
+    const extension = await loadExtension(root);
+    vi.useFakeTimers();
+    await invoke(extension.commands.get("deadloop-enable")!, repoPath, { isIdle: () => false });
+    rmSync(lockPath);
+
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    expect(JSON.parse(readFileSync(lockPath, "utf8")).pid).toBe(process.pid);
+  });
+
+  it("releases the scheduler lock when an additional origin push URL targets another repository", async () => {
+    const { root, repoPath } = fixtureRepository();
+    writeConfig(root, repoPath);
+    const extension = await loadExtension(root);
+    vi.useFakeTimers();
+    await invoke(extension.commands.get("deadloop-enable")!, repoPath, { isIdle: () => false });
+    git(repoPath, ["remote", "set-url", "--add", "--push", "origin", "https://github.com/other/repo.git"]);
+
+    await vi.advanceTimersByTimeAsync(3_000);
+
+    const lockName = schedulerLockName({ id: "demo", repoPath, githubRepo: "owner/demo" });
+    expect(existsSync(path.join(root, ".pi", "agent", "deadloop", lockName))).toBe(false);
+  });
+
+  it("releases the scheduler lock when an additional origin push URL is unparseable", async () => {
+    const { root, repoPath } = fixtureRepository();
+    writeConfig(root, repoPath);
+    const extension = await loadExtension(root);
+    vi.useFakeTimers();
+    await invoke(extension.commands.get("deadloop-enable")!, repoPath, { isIdle: () => false });
+    git(repoPath, ["remote", "set-url", "--add", "--push", "origin", "not-a-github-url"]);
+
+    await vi.advanceTimersByTimeAsync(3_000);
+
+    const lockName = schedulerLockName({ id: "demo", repoPath, githubRepo: "owner/demo" });
+    expect(existsSync(path.join(root, ".pi", "agent", "deadloop", lockName))).toBe(false);
   });
 
   it("releases the scheduler lock after another session disables a busy owner", async () => {

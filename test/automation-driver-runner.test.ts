@@ -17,6 +17,7 @@ async function exerciseDriver(
     isEnabled?: () => boolean;
     runDriver?: () => void;
     runPrecheck?: () => void;
+    sendUserMessageIfEnabled?: (prompt: string) => boolean;
   } = {},
 ) {
   const project = normalizeProject({
@@ -47,6 +48,7 @@ async function exerciseDriver(
     },
     saveState: () => undefined,
     sendUserMessage: (prompt) => sent.push(prompt),
+    sendUserMessageIfEnabled: options.sendUserMessageIfEnabled,
     setStatus: () => undefined,
   });
 
@@ -184,6 +186,15 @@ describe("deterministic automation driver runner", () => {
     expect(result.entry.lastResult).toBe("disabled_before_driver_prompt");
   });
 
+  it("does not dispatch a driver prompt when disable wins the enqueue lock", async () => {
+    const result = await exerciseDriver(JSON.stringify({ action: "needs_llm", prompt: "driver prompt" }), {
+      isEnabled: () => true,
+      sendUserMessageIfEnabled: () => false,
+    });
+
+    expect(result.sent).toEqual([]);
+  });
+
   it("keeps prompt-only automations working when no driver is configured", async () => {
     const project = normalizeProject({
       id: "demo",
@@ -206,6 +217,29 @@ describe("deterministic automation driver runner", () => {
     });
 
     expect(sent).toEqual(["full prompt"]);
+  });
+
+  it("does not dispatch a prompt when disable wins the enqueue lock", async () => {
+    const project = normalizeProject({
+      id: "demo",
+      automations: [{ id: "demo:auto", name: "auto", precheckFile: "precheck.sh", promptFile: "full.md" }],
+    });
+    const state = { automations: {} };
+    const sent: string[] = [];
+
+    await runScheduledAutomation(project, project.automations[0], 123, state, {
+      isEnabled: () => true,
+      now: () => 456,
+      readPrompt: () => "full prompt",
+      resolveAutomationFileInDir: (_kind, _automation, requested) => foundFile(requested),
+      runDriver: async () => ({ code: 99, stdout: "should not run", stderr: "" }),
+      runPrecheck: async () => ({ code: 0, stdout: "", stderr: "" }),
+      saveState: () => undefined,
+      sendUserMessage: (prompt) => sent.push(prompt),
+      sendUserMessageIfEnabled: () => false,
+    });
+
+    expect(sent).toEqual([]);
   });
 
   it("does not dispatch a prompt after enablement is removed during precheck", async () => {

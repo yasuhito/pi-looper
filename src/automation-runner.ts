@@ -38,6 +38,7 @@ export type AutomationRunnerDeps = {
   ) => Promise<AutomationExecResult>;
   saveState: (state: AutomationState) => void;
   sendUserMessage: (prompt: string) => void;
+  sendUserMessageIfEnabled?: (prompt: string) => boolean;
   setStatus?: (text: string) => void;
 };
 
@@ -189,7 +190,15 @@ async function runConfiguredDriver(
       return true;
     }
     try {
-      deps.sendUserMessage(prompt);
+      const queued = deps.sendUserMessageIfEnabled
+        ? deps.sendUserMessageIfEnabled(prompt)
+        : (deps.sendUserMessage(prompt), true);
+      if (!queued) {
+        recordAutomationResult(entry, "disabled_before_driver_prompt");
+        entry.updatedAt = deps.now();
+        deps.saveState(state);
+        return true;
+      }
       recordAutomationResult(entry, "driver_needs_llm_queued");
       entry.lastQueuedAt = deps.now();
       entry.updatedAt = deps.now();
@@ -321,7 +330,15 @@ export async function runScheduledAutomation(
 
   try {
     const prompt = deps.readPrompt(project, automation, promptResolution.resolved);
-    deps.sendUserMessage(prompt);
+    const queued = deps.sendUserMessageIfEnabled
+      ? deps.sendUserMessageIfEnabled(prompt)
+      : (deps.sendUserMessage(prompt), true);
+    if (!queued) {
+      recordAutomationResult(entry, "disabled_before_prompt");
+      entry.updatedAt = deps.now();
+      deps.saveState(state);
+      return;
+    }
     recordAutomationResult(entry, "queued");
     entry.lastQueuedAt = deps.now();
     entry.updatedAt = deps.now();

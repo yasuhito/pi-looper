@@ -25,6 +25,7 @@ import { readClaudeConfig } from "../../src/agent-trust.cjs";
 import { runScheduledAutomation } from "../../src/automation-runner";
 const { createAsyncHerdrRunner } = require("../../src/herdr-runner.ts");
 const { acquireLock, releaseOwned } = require("../../src/enablement-lock.cjs");
+const { assertEnabled, withEnabledProjectLock } = require("../../src/enabled-operation.cjs");
 const {
   acquireSchedulerLock: acquireSchedulerFileLock,
   releaseSchedulerLock: releaseSchedulerFileLock,
@@ -32,7 +33,6 @@ const {
 import { inferredProjectId, schedulerLockName } from "../../src/project-identity";
 import {
   findEnabledProject,
-  isEnabledProjectState,
   normalizeEnablementState,
   observeAutoMerge,
   removeEnabledProject,
@@ -304,8 +304,12 @@ async function applyFirstEnableAutoMergeGate(project) {
 
 function isProjectEnabled(project) {
   if (!project.repoPath || !project.githubRepo) return false;
-  if (inferGithubRepo(project.repoPath) !== project.githubRepo) return false;
-  return isEnabledProjectState(loadEnablementState(), { repoPath: project.repoPath, githubRepo: project.githubRepo });
+  try {
+    assertEnabled({ repoPath: project.repoPath, githubRepo: project.githubRepo, stateDir: STATE_DIR });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function extensionCodeWarning() {
@@ -703,6 +707,17 @@ async function runAutomation(pi, ctx, project, automation, dueSlot, state) {
       await runAutomationScript(pi, precheckProject, precheckAutomation, precheckFile),
     saveState,
     sendUserMessage: (prompt) => pi.sendUserMessage(prompt),
+    sendUserMessageIfEnabled: (prompt) => {
+      try {
+        return withEnabledProjectLock(
+          { repoPath: project.repoPath, githubRepo: project.githubRepo, stateDir: STATE_DIR },
+          () => (pi.sendUserMessage(prompt), true),
+        );
+      } catch (error) {
+        if (error instanceof Error && error.message === "deadloop is disabled for this repository") return false;
+        throw error;
+      }
+    },
     setStatus: (text) => setLooperStatus(ctx, text),
   });
 }
@@ -814,13 +829,21 @@ export default function (pi) {
 
   function startScheduler(ctx, project) {
     if (process.env.DEADLOOP === "off" || process.env.DEADLOOP_AUTOMATIONS === "off") return;
-    if (active?.lockPath === projectLockPath(project)) return;
+    if (!isProjectEnabled(project)) {
+      stopScheduler(ctx);
+      setLooperStatus(ctx, "deadloop is not enabled for this repository");
+      return;
+    }
+    const lockPath = projectLockPath(project);
+    if (active?.lockPath === lockPath && ownsLock) return;
     stopScheduler(ctx);
     const lock = acquireSchedulerLock(project);
     ownsLock = lock.acquired;
     active = { project, lockPath: lock.lockPath, lockToken: lock.token };
     if (!ownsLock) {
       setLooperStatus(ctx, `${project.id} standby: owner pid ${lock.owner ?? "unknown"}`);
+      timer = setInterval(() => startScheduler(ctx, project), TICK_MS);
+      timer.unref?.();
       return;
     }
     updateStatus(ctx, project, loadState());

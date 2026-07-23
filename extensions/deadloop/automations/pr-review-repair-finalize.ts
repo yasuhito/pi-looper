@@ -70,35 +70,30 @@ function finalizeReviewRepair(args: FinalizeArgs, ops: FinalizeOps = { run: defa
   ]);
   if (checked(ops, ["git", "-C", args.repo, "status", "--porcelain"])) throw new Error("repair worktree is dirty after checks");
 
-  const pr = JSON.parse(
-    checked(ops, [
-      "gh",
-      "pr",
-      "view",
-      args.pr,
-      "-R",
-      args.githubRepo,
-      "--json",
-      "state,headRefName,headRefOid,isCrossRepository",
-    ]),
-  );
-  const guard = decideRepairPushGuard(pr, args.branch, args.expectedHead);
-  if (guard.action !== "push") return guard;
-
   const project = { repoPath: args.projectRepo, githubRepo: args.githubRepo, stateDir: args.stateDir };
+  const guardAndPush = () => {
+    const pr = JSON.parse(
+      checked(ops, [
+        "gh",
+        "pr",
+        "view",
+        args.pr,
+        "-R",
+        args.githubRepo,
+        "--json",
+        "state,headRefName,headRefOid,isCrossRepository",
+      ]),
+    );
+    const guard = decideRepairPushGuard(pr, args.branch, args.expectedHead);
+    if (guard.action !== "push") return guard;
+    checked(ops, ["git", "-C", args.repo, "push", "--porcelain", args.remote, `HEAD:refs/heads/${args.branch}`], MAX_GUARDED_OPERATION_MS);
+    return { action: "pushed", reason: "repair_pushed", headOid: checked(ops, ["git", "-C", args.repo, "rev-parse", "HEAD"]) };
+  };
   if (ops.assertEnabled) {
     ops.assertEnabled(project);
-    checked(ops, ["git", "-C", args.repo, "push", "--porcelain", args.remote, `HEAD:refs/heads/${args.branch}`], MAX_GUARDED_OPERATION_MS);
-  } else {
-    withEnabledProjectLock(project, () =>
-      checked(
-        ops,
-        ["git", "-C", args.repo, "push", "--porcelain", args.remote, `HEAD:refs/heads/${args.branch}`],
-        MAX_GUARDED_OPERATION_MS,
-      ),
-    );
+    return guardAndPush();
   }
-  return { action: "pushed", reason: "repair_pushed", headOid: checked(ops, ["git", "-C", args.repo, "rev-parse", "HEAD"]) };
+  return withEnabledProjectLock(project, guardAndPush);
 }
 
 function required(values: Record<string, string>, name: string): string {
