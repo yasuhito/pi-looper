@@ -1,5 +1,7 @@
 import path from "node:path";
 
+const { normalizeEnablementStateValue } = require("./enablement-state.cjs");
+
 export type EnabledProject = {
   repoPath: string;
   githubRepo: string;
@@ -23,34 +25,7 @@ function validIdentity(value: Partial<ProjectIdentity>): value is ProjectIdentit
 }
 
 export function normalizeEnablementState(value: unknown): EnablementState | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const projects = (value as { projects?: unknown }).projects;
-  if (!Array.isArray(projects)) return null;
-  const normalized: EnabledProject[] = [];
-  for (const candidate of projects) {
-    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return null;
-    const project = candidate as Partial<EnabledProject>;
-    const enabledAt = project.enabledAt;
-    const firstEnableAutoMerge = project.firstEnableAutoMerge;
-    const lastObservedAutoMerge = project.lastObservedAutoMerge;
-    const autoMergeAcknowledged = project.autoMergeAcknowledged;
-    const enabled = project.enabled;
-    if (!validIdentity(project) || !Number.isFinite(enabledAt)) return null;
-    if (firstEnableAutoMerge !== undefined && typeof firstEnableAutoMerge !== "boolean") return null;
-    if (lastObservedAutoMerge !== undefined && typeof lastObservedAutoMerge !== "boolean") return null;
-    if (autoMergeAcknowledged !== undefined && typeof autoMergeAcknowledged !== "boolean") return null;
-    if (enabled !== undefined && typeof enabled !== "boolean") return null;
-    normalized.push({
-      repoPath: normalizedPath(project.repoPath),
-      githubRepo: project.githubRepo,
-      enabledAt: Number(enabledAt),
-      ...(firstEnableAutoMerge === undefined ? {} : { firstEnableAutoMerge }),
-      ...(lastObservedAutoMerge === undefined ? {} : { lastObservedAutoMerge }),
-      ...(autoMergeAcknowledged === undefined ? {} : { autoMergeAcknowledged }),
-      ...(enabled === undefined ? {} : { enabled }),
-    });
-  }
-  return { projects: normalized };
+  return normalizeEnablementStateValue(value) as EnablementState | null;
 }
 
 export function findEnabledProject(state: EnablementState | null, identity: ProjectIdentity): EnabledProject | null {

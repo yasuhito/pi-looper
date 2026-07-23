@@ -23,7 +23,7 @@ const {
   shellQuote,
 } = require("../../../src/automation-driver-kit.ts");
 const { createGithubOperations } = require("../../../src/github-operations.ts");
-const { assertDriverEnabled } = require("../../../src/driver-enablement.cjs");
+const { withEnabledDriverLock } = require("../../../src/driver-enablement.cjs");
 
 import type { DriverResult, JsonObject } from "../../../src/automation-driver-kit";
 
@@ -229,10 +229,8 @@ function applyBranchUpdateBlocked(pr: JsonObject, env: ReturnType<typeof envConf
   const comment = branchUpdateBlockedComment(pr, env, reason);
   if (!fixture) {
     const github = githubOperations();
-    assertDriverEnabled(env);
-    github.commentPr(env.githubRepo, Number(pr.number || 0), comment);
-    assertDriverEnabled(env);
-    github.movePrLabels(env.githubRepo, Number(pr.number || 0), { remove: env.reviewingLabel, add: env.blockedLabel });
+    withEnabledDriverLock(env, () => github.commentPr(env.githubRepo, Number(pr.number || 0), comment));
+    withEnabledDriverLock(env, () => github.movePrLabels(env.githubRepo, Number(pr.number || 0), { remove: env.reviewingLabel, add: env.blockedLabel }));
   }
   return comment;
 }
@@ -267,12 +265,9 @@ function launchBranchUpdate(
   runText(["git", "check-ref-format", "--branch", branch]);
   const marker = renderBranchUpdateMarker(headOid, baseOid);
   const github = githubOperations();
-  assertDriverEnabled(env);
-  github.commentPr(env.githubRepo, number, `Starting one guarded merge update for the current PR/base pair.\n\n${marker}`);
-  assertDriverEnabled(env);
-  github.movePrLabels(env.githubRepo, number, { add: env.reviewingLabel });
-  assertDriverEnabled(env);
-  const launch = launchAgentFlow(
+  withEnabledDriverLock(env, () => github.commentPr(env.githubRepo, number, `Starting one guarded merge update for the current PR/base pair.\n\n${marker}`));
+  withEnabledDriverLock(env, () => github.movePrLabels(env.githubRepo, number, { add: env.reviewingLabel }));
+  const launch = withEnabledDriverLock(env, () => launchAgentFlow(
     {
       worktree: { mode: "open", branch },
       repoPath: env.repoPath,
@@ -288,7 +283,7 @@ function launchBranchUpdate(
         branchUpdateWorkerPrompt(pr, env, promiseFile, worktreePath, headOid, baseOid),
     },
     { mkdirSync: fs.mkdirSync, runner: herdrRunner(), runText, writeFileSync: fs.writeFileSync },
-  );
+  ));
   return { updaterName, headRefName: branch, retryKey: key, ...launch };
 }
 
@@ -312,10 +307,8 @@ function launchPrReviewer(pr: JsonObject, env: ReturnType<typeof envConfig>, fix
     };
   }
 
-  assertDriverEnabled(env);
-  githubOperations().movePrLabels(env.githubRepo, number, { add: env.reviewingLabel });
-  assertDriverEnabled(env);
-  const launch = launchAgentFlow(
+  withEnabledDriverLock(env, () => githubOperations().movePrLabels(env.githubRepo, number, { add: env.reviewingLabel }));
+  const launch = withEnabledDriverLock(env, () => launchAgentFlow(
     {
       worktree: { mode: "open", branch: headRefName },
       repoPath: env.repoPath,
@@ -331,7 +324,7 @@ function launchPrReviewer(pr: JsonObject, env: ReturnType<typeof envConfig>, fix
         reviewAgentPrompt(pr, env, promiseFile, reason, worktreePath),
     },
     { mkdirSync: fs.mkdirSync, runner: herdrRunner(), runText, writeFileSync: fs.writeFileSync },
-  );
+  ));
   return { reviewerName, headRefName, ...launch };
 }
 
@@ -373,14 +366,10 @@ function applyDraftGate(pr: JsonObject, env: ReturnType<typeof envConfig>, fixtu
   if (fixture) return;
   const number = String(pr.number);
   const github = githubOperations();
-  assertDriverEnabled(env);
-  github.commentPr(env.githubRepo, number, comment);
-  assertDriverEnabled(env);
-  github.movePrLabels(env.githubRepo, number, { remove: env.reviewingLabel }, { check: false });
-  assertDriverEnabled(env);
-  github.movePrLabels(env.githubRepo, number, { remove: env.reviewLabel }, { check: false });
-  assertDriverEnabled(env);
-  github.movePrLabels(env.githubRepo, number, { add: env.blockedLabel });
+  withEnabledDriverLock(env, () => github.commentPr(env.githubRepo, number, comment));
+  withEnabledDriverLock(env, () => github.movePrLabels(env.githubRepo, number, { remove: env.reviewingLabel }, { check: false }));
+  withEnabledDriverLock(env, () => github.movePrLabels(env.githubRepo, number, { remove: env.reviewLabel }, { check: false }));
+  withEnabledDriverLock(env, () => github.movePrLabels(env.githubRepo, number, { add: env.blockedLabel }));
 }
 
 function applyExternalReviewRequest(pr: JsonObject, env: ReturnType<typeof envConfig>, fixture: JsonObject | null): void {
@@ -388,12 +377,9 @@ function applyExternalReviewRequest(pr: JsonObject, env: ReturnType<typeof envCo
   const number = String(pr.number);
   const head = String(pr.headRefOid || "");
   const github = githubOperations();
-  assertDriverEnabled(env);
-  github.addPrReviewer(env.githubRepo, number, "@copilot", { check: false });
-  assertDriverEnabled(env);
-  github.commentPr(env.githubRepo, number, `@coderabbitai review\n\n<!-- deadloop:external-review-request head=${head} -->`);
-  assertDriverEnabled(env);
-  github.movePrLabels(env.githubRepo, number, { remove: env.reviewingLabel }, { check: false });
+  withEnabledDriverLock(env, () => github.addPrReviewer(env.githubRepo, number, "@copilot", { check: false }));
+  withEnabledDriverLock(env, () => github.commentPr(env.githubRepo, number, `@coderabbitai review\n\n<!-- deadloop:external-review-request head=${head} -->`));
+  withEnabledDriverLock(env, () => github.movePrLabels(env.githubRepo, number, { remove: env.reviewingLabel }, { check: false }));
 }
 
 function drive(fixturePath: string | undefined): DriverResult {

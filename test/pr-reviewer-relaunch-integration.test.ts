@@ -56,6 +56,13 @@ if (args[0] === "pr" && args[1] === "list") {
 `,
     );
     executable(
+      path.join(bin, "git"),
+      `#!/usr/bin/env node
+const args = process.argv.slice(2);
+if (args.includes("get-url")) process.stdout.write("https://github.com/owner/repo.git\\n");
+`,
+    );
+    executable(
       path.join(bin, "herdr"),
       `#!/usr/bin/env node
 const fs = require("node:fs");

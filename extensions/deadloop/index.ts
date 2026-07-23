@@ -24,6 +24,7 @@ import { buildStatusSnapshot, formatStatusReport } from "../../src/status";
 import { readClaudeConfig } from "../../src/agent-trust.cjs";
 import { runScheduledAutomation } from "../../src/automation-runner";
 const { createAsyncHerdrRunner } = require("../../src/herdr-runner.ts");
+const { acquireLock, releaseOwned } = require("../../src/enablement-lock.cjs");
 import {
   findEnabledProject,
   isEnabledProjectState,
@@ -245,32 +246,14 @@ function saveEnablementState(state) {
 async function updateEnablementState(update) {
   const lockPath = `${ENABLEMENT_PATH}.lock`;
   fs.mkdirSync(STATE_DIR, { recursive: true });
-  for (let attempt = 0; attempt < 1200; attempt++) {
-    try {
-      const fd = fs.openSync(lockPath, "wx");
-      try {
-        fs.writeFileSync(fd, JSON.stringify({ pid: process.pid }));
-      } finally {
-        fs.closeSync(fd);
-      }
-      try {
-        const next = await update(loadEnablementState());
-        saveEnablementState(next);
-        return next;
-      } finally {
-        try { fs.unlinkSync(lockPath); } catch {}
-      }
-    } catch (error) {
-      if (error?.code !== "EEXIST") throw error;
-      const owner = Number(readJsonFile(lockPath, null)?.pid);
-      if (!isPidAlive(owner)) {
-        try { fs.unlinkSync(lockPath); } catch {}
-        continue;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 25));
-    }
+  const lock = await acquireLock(lockPath, { busyMessage: "enablement state is busy; retry the command" });
+  try {
+    const next = await update(loadEnablementState());
+    saveEnablementState(next);
+    return next;
+  } finally {
+    releaseOwned(lockPath, lock.token);
   }
-  throw new Error("enablement state is busy; retry the command");
 }
 
 async function applyFirstEnableAutoMergeGate(project) {
@@ -692,7 +675,8 @@ async function detectProjectIdentity(pi, cwd) {
     throw new Error("all origin fetch and push URLs must identify exactly the same GitHub repository");
   }
   const githubRepo = identities[0];
-  const baseBranch = (await commandExec(pi, "git", ["-C", repoPath, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"])).stdout.trim() || "origin/main";
+  const upstream = await pi.exec("git", ["-C", repoPath, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], { timeout: 15_000 });
+  const baseBranch = upstream.code === 0 ? upstream.stdout.trim() || "origin/main" : "origin/main";
   return { repoPath, githubRepo, baseBranch, id: sanitizeId(path.basename(repoPath)), worktreeRoot: path.join(os.homedir(), ".herdr", "worktrees", sanitizeId(path.basename(repoPath))) };
 }
 

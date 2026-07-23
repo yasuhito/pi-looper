@@ -41,7 +41,7 @@ function fixtureRepository() {
 
 async function loadExtension(
   root: string,
-  options: { failLabel?: boolean; labels?: unknown[]; viewerPermission?: string; pushRemote?: string } = {},
+  options: { failLabel?: boolean; labels?: unknown[]; viewerPermission?: string; pushRemote?: string; noUpstream?: boolean } = {},
 ): Promise<{ commands: Map<string, CommandHandler>; ghCommands: string[][]; messages: string[] }> {
   process.env.HOME = root;
   process.env.PI_CODING_AGENT_DIR = path.join(root, ".pi", "agent");
@@ -59,7 +59,7 @@ async function loadExtension(
           const remote = args.includes("--push") ? options.pushRemote || "https://github.com/owner/demo.git" : "https://github.com/owner/demo.git";
           return { code: 0, stdout: `${remote}\n`, stderr: "" };
         }
-        if (args.includes("--symbolic-full-name")) return { code: 0, stdout: "", stderr: "" };
+        if (args.includes("--symbolic-full-name")) return options.noUpstream ? { code: 128, stdout: "", stderr: "no upstream" } : { code: 0, stdout: "", stderr: "" };
         if (args.includes("fetch")) return { code: 0, stdout: "", stderr: "" };
         if (args.includes("show")) return { code: 1, stdout: "", stderr: "missing" };
         try {
@@ -154,6 +154,16 @@ describe("enablement command integration", () => {
     await invoke(extension.commands.get("deadloop-enable")!, repoPath);
 
     expect(extension.messages.at(-1)).toContain("autoMerge is on");
+  });
+
+  it("enables a primary checkout whose current branch has no upstream", async () => {
+    const { root, repoPath } = fixtureRepository();
+    writeConfig(root, repoPath);
+    const extension = await loadExtension(root, { noUpstream: true });
+
+    await invoke(extension.commands.get("deadloop-enable")!, repoPath);
+
+    expect(extension.messages.at(-1)).toContain("deadloop enabled");
   });
 
   it("rejects a different configured origin push repository", async () => {

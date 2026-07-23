@@ -1,15 +1,11 @@
-const fs = require("node:fs");
-const path = require("node:path");
+const { assertEnabled, withEnabledProjectLock } = require("./enabled-operation.cjs");
 
 function assertDriverEnabled(project) {
-  try {
-    const state = JSON.parse(fs.readFileSync(path.join(project.stateDir, "enabled-projects.json"), "utf8"));
-    const enabled = state.projects.find((candidate) =>
-      candidate && candidate.repoPath === path.resolve(project.repoPath) && candidate.githubRepo === project.githubRepo && candidate.enabled !== false,
-    );
-    if (enabled) return;
-  } catch {}
-  throw new Error("deadloop is disabled for this repository");
+  return assertEnabled(project);
 }
 
-module.exports = { assertDriverEnabled };
+function withEnabledDriverLock(project, operation, options) {
+  return withEnabledProjectLock(project, operation, options);
+}
+
+module.exports = { assertDriverEnabled, withEnabledDriverLock };

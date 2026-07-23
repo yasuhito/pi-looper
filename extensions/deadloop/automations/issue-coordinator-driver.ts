@@ -19,7 +19,7 @@ const {
   parseFixtureArg,
 } = require("../../../src/automation-driver-kit.ts");
 const { createGithubOperations } = require("../../../src/github-operations.ts");
-const { assertDriverEnabled } = require("../../../src/driver-enablement.cjs");
+const { withEnabledDriverLock } = require("../../../src/driver-enablement.cjs");
 
 import type { DriverResult, JsonObject } from "../../../src/automation-driver-kit";
 
@@ -67,10 +67,8 @@ function applyContractMissing(issue: JsonObject, env: ReturnType<typeof envConfi
   if (fixture) return;
   const number = String(issue.number);
   const github = githubOperations();
-  assertDriverEnabled(env);
-  github.moveIssueLabels(env.githubRepo, number, { remove: env.implementLabel, add: env.needsTriageLabel });
-  assertDriverEnabled(env);
-  github.commentIssue(env.githubRepo, number, gateMissingContractComment(issue));
+  withEnabledDriverLock(env, () => github.moveIssueLabels(env.githubRepo, number, { remove: env.implementLabel, add: env.needsTriageLabel }));
+  withEnabledDriverLock(env, () => github.commentIssue(env.githubRepo, number, gateMissingContractComment(issue)));
 }
 
 function blockedComment(issue: JsonObject, env: ReturnType<typeof envConfig>, reason: string): string {
@@ -92,10 +90,8 @@ function applyBlocked(issue: JsonObject, env: ReturnType<typeof envConfig>, comm
   if (fixture) return;
   const number = String(issue.number);
   const github = githubOperations();
-  assertDriverEnabled(env);
-  github.moveIssueLabels(env.githubRepo, number, { remove: env.implementLabel, add: env.blockedLabel });
-  assertDriverEnabled(env);
-  github.commentIssue(env.githubRepo, number, comment);
+  withEnabledDriverLock(env, () => github.moveIssueLabels(env.githubRepo, number, { remove: env.implementLabel, add: env.blockedLabel }));
+  withEnabledDriverLock(env, () => github.commentIssue(env.githubRepo, number, comment));
 }
 
 function slugForBranch(value: unknown): string {
@@ -131,10 +127,8 @@ function launchIssueWorker(issue: JsonObject, env: ReturnType<typeof envConfig>,
     };
   }
 
-  assertDriverEnabled(env);
-  githubOperations().moveIssueLabels(env.githubRepo, number, { remove: env.implementLabel, add: env.inProgressLabel });
-  assertDriverEnabled(env);
-  const launch = launchAgentFlow(
+  withEnabledDriverLock(env, () => githubOperations().moveIssueLabels(env.githubRepo, number, { remove: env.implementLabel, add: env.inProgressLabel }));
+  const launch = withEnabledDriverLock(env, () => launchAgentFlow(
     {
       worktree: { mode: "create", branch, baseBranch: env.baseBranch },
       repoPath: env.repoPath,
@@ -165,7 +159,7 @@ function launchIssueWorker(issue: JsonObject, env: ReturnType<typeof envConfig>,
         }),
     },
     { mkdirSync: fs.mkdirSync, runner: herdrRunner(), runText, writeFileSync: fs.writeFileSync },
-  );
+  ));
   return { workerName, branch, ...launch };
 }
 
@@ -203,10 +197,10 @@ function drive(fixturePath: string | undefined): DriverResult {
   const cleanup = cleanupPlan(fixture);
   const candidates = cleanup.candidates || [];
   if (candidates.length) {
-    if (!fixture) assertDriverEnabled(env);
+    const appliedCleanup = fixture ? applyCleanup(cleanup, fixture) : withEnabledDriverLock(env, () => applyCleanup(cleanup, fixture));
     return driverResult("done", `completed worker cleanup: ${candidates.length} candidate(s)`, {
       driverAction: "cleanup_applied",
-      cleanup: applyCleanup(cleanup, fixture),
+      cleanup: appliedCleanup,
     });
   }
 

@@ -56,7 +56,8 @@ else fs.appendFileSync(process.env.EVENT_LOG, "github-mutation\\n");
   executable(
     path.join(bin, "git"),
     `#!/usr/bin/env node
-if (process.argv[2] === "check-ref-format") process.exit(0);
+const args = process.argv.slice(2);
+if (args.includes("get-url")) process.stdout.write("https://github.com/owner/repo.git\\n");
 process.exit(0);
 `,
   );
