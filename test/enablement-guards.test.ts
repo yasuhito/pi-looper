@@ -213,6 +213,8 @@ describe("enablement mutation guards", () => {
     writeState(project, { enabledAt: 1 });
     let pushedDestination = "";
     const ops = { run: (args: string[]) => {
+      if (args.includes("--git-common-dir")) return { status: 0, stdout: `${project.repoPath}/.git\n`, stderr: "" };
+      if (args.includes("symbolic-ref")) return { status: 0, stdout: "agent/issue-1\n", stderr: "" };
       if (args.includes("get-url")) return { status: 0, stdout: "https://github.com/owner/repo.git\n", stderr: "" };
       if (args[0] === "gh") return { status: 0, stdout: '{"id":"R_repo"}', stderr: "" };
       pushedDestination = args[5] || "";
@@ -220,9 +222,40 @@ describe("enablement mutation guards", () => {
       return { status: 0, stdout: "", stderr: "" };
     } };
 
-    runGuardedPush({ projectRepo: project.repoPath, worktree: project.repoPath, githubRepo: project.githubRepo, stateDir: project.stateDir, enabledAt: 1, remote: "origin", branch: "agent/test" }, ops);
+    runGuardedPush({ projectRepo: project.repoPath, worktree: project.repoPath, githubRepo: project.githubRepo, stateDir: project.stateDir, enabledAt: 1, remote: "origin", branch: "agent/issue-1" }, ops);
 
     expect(pushedDestination).toBe("https://github.com/owner/repo.git");
+  });
+
+  it("rejects a source checkout from a different Git common directory", () => {
+    const project = fixture();
+    writeState(project, { enabledAt: 1 });
+    const ops = { run: (args: string[]) => ({
+      status: 0,
+      stdout: args.includes("--git-common-dir") && args[2] === "/foreign" ? "/foreign/.git\n" : `${project.repoPath}/.git\n`,
+      stderr: "",
+    }) };
+
+    expect(() => runGuardedPush({ projectRepo: project.repoPath, worktree: "/foreign", githubRepo: project.githubRepo, stateDir: project.stateDir, enabledAt: 1, remote: "origin", branch: "agent/issue-1" }, ops)).toThrow("does not belong to the enabled checkout");
+  });
+
+  it("rejects a requested branch that is not checked out in the source worktree", () => {
+    const project = fixture();
+    writeState(project, { enabledAt: 1 });
+    const ops = { run: (args: string[]) => ({
+      status: 0,
+      stdout: args.includes("symbolic-ref") ? "agent/issue-2\n" : `${project.repoPath}/.git\n`,
+      stderr: "",
+    }) };
+
+    expect(() => runGuardedPush({ projectRepo: project.repoPath, worktree: project.repoPath, githubRepo: project.githubRepo, stateDir: project.stateDir, enabledAt: 1, remote: "origin", branch: "agent/issue-1" }, ops)).toThrow("does not match the requested branch");
+  });
+
+  it("rejects the configured base branch as the push destination", () => {
+    const project = fixture();
+    writeState(project, { enabledAt: 1, baseBranch: "origin/main" });
+
+    expect(() => runGuardedPush({ projectRepo: project.repoPath, worktree: project.repoPath, githubRepo: project.githubRepo, stateDir: project.stateDir, enabledAt: 1, remote: "origin", branch: "main" }, { run: () => ({ status: 0, stdout: "", stderr: "" }) })).toThrow("configured base branch");
   });
 
   it("recovers an old empty lock left before metadata was written", () => {

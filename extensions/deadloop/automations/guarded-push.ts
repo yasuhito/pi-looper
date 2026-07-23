@@ -18,6 +18,7 @@ type Args = {
 
 type CommandResult = { status: number; stdout: string; stderr: string };
 type CommandOps = { run(args: string[], timeoutMs?: number): CommandResult };
+type EnabledProject = { githubRepositoryId: string; baseBranch?: string };
 
 function parseArgs(argv: string[]): Args {
   const values: Record<string, string> = {};
@@ -44,10 +45,44 @@ function defaultOps(): CommandOps {
   };
 }
 
+function gitOutput(ops: CommandOps, args: string[], description: string): string {
+  const result = ops.run(args, MAX_GUARDED_OPERATION_MS);
+  if (result.status !== 0) throw new Error((result.stderr || result.stdout || description).trim());
+  return result.stdout.trim();
+}
+
+function assertAuthorizedSource(args: Args, enabled: EnabledProject, ops: CommandOps): void {
+  const baseBranch = enabled.baseBranch?.replace(/^origin\//, "");
+  if (baseBranch && args.branch === baseBranch) throw new Error("push destination must not be the configured base branch");
+  if (!args.branch.startsWith("agent/issue-") || args.branch === "agent/issue-") {
+    throw new Error("push destination must be an agent/issue-* worker branch");
+  }
+
+  const projectCommonDir = gitOutput(
+    ops,
+    ["git", "-C", args.projectRepo, "rev-parse", "--path-format=absolute", "--git-common-dir"],
+    "enabled checkout Git common directory could not be resolved",
+  );
+  const worktreeCommonDir = gitOutput(
+    ops,
+    ["git", "-C", args.worktree, "rev-parse", "--path-format=absolute", "--git-common-dir"],
+    "source worktree Git common directory could not be resolved",
+  );
+  if (projectCommonDir !== worktreeCommonDir) throw new Error("source worktree does not belong to the enabled checkout");
+
+  const checkedOutBranch = gitOutput(
+    ops,
+    ["git", "-C", args.worktree, "symbolic-ref", "--quiet", "--short", "HEAD"],
+    "source worktree must have the requested branch checked out",
+  );
+  if (checkedOutBranch !== args.branch) throw new Error("source worktree branch does not match the requested branch");
+}
+
 function runGuardedPush(args: Args, ops: CommandOps = defaultOps()): number {
   return withEnabledProjectLock(
     { repoPath: args.projectRepo, githubRepo: args.githubRepo, stateDir: args.stateDir, enabledAt: args.enabledAt },
-    (enabled: { githubRepositoryId: string }) => {
+    (enabled: EnabledProject) => {
+      assertAuthorizedSource(args, enabled, ops);
       const destination = resolveVerifiedPushDestination(
         ops,
         args.projectRepo,

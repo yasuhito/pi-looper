@@ -135,7 +135,7 @@ function renderReviewerDispatcherCommand(input: ReviewerMonitorPromptInput): str
 }
 
 function renderReviewerMonitorPrompt(input: ReviewerMonitorPromptInput): string {
-  const guardedMerge = `node ${shellQuotePrompt(`${input.automationDir}/merge-reviewed-pr.ts`)} --project-repo ${shellQuotePrompt(input.repoPath || "<projectRepo>")} --github-repo ${shellQuotePrompt(input.githubRepo || "<githubRepo>")} --state-dir ${shellQuotePrompt(input.stateDir || "<stateDir>")} --enabled-at ${shellQuotePrompt(String(input.enabledAt ?? "<enabledAt>"))} --pr ${input.prNumber} --expected-head ${shellQuotePrompt(input.expectedHeadOid)}`;
+  const guardedMerge = `node ${shellQuotePrompt(`${input.automationDir}/merge-reviewed-pr.ts`)} --project-repo ${shellQuotePrompt(input.repoPath || "<projectRepo>")} --github-repo ${shellQuotePrompt(input.githubRepo || "<githubRepo>")} --state-dir ${shellQuotePrompt(input.stateDir || "<stateDir>")} --enabled-at ${shellQuotePrompt(String(input.enabledAt ?? "<enabledAt>"))} --pr ${input.prNumber} --expected-head ${shellQuotePrompt(input.expectedHeadOid)} --review-label ${shellQuotePrompt(input.reviewLabel)} --reviewing-label ${shellQuotePrompt(input.reviewingLabel)} --blocked-label ${shellQuotePrompt(input.blockedLabel)}`;
   return `Deterministic driver launched reviewer for PR #${input.prNumber}. Do not launch another agent and do not reselect another PR.
 
 Review binding:
