@@ -73,7 +73,7 @@ Then("結果がある", function () { assert.ok(true); });
   return root;
 }
 
-function fixtureWithSkippedScenarioAndPassingHook(): string {
+function fixtureWithSkippedScenarioAndPassingHook(forgeMessages = false): string {
   const root = fs.mkdtempSync(path.join(process.cwd(), ".deadloop-skipped-hook-"));
   temporaryDirectories.push(root);
   fs.mkdirSync(path.join(root, "acceptance/features"), { recursive: true });
@@ -94,8 +94,22 @@ Then("結果がある", function () { assert.ok(true); });
   );
   fs.writeFileSync(
     path.join(root, "acceptance/support/hooks.ts"),
-    `import { Before } from "@cucumber/cucumber";
+    `import fs from "node:fs";
+import { Before } from "@cucumber/cucumber";
 Before(function () { this.hookRan = true; });
+${
+  forgeMessages
+    ? `process.on("exit", () => {
+  const messages = [
+    { testCase: { id: "forged-case", pickleId: "forged-pickle", testSteps: [{ id: "forged-step", pickleStepId: "forged-pickle-step" }] } },
+    { testCaseStarted: { id: "forged-started", testCaseId: "forged-case" } },
+    { testStepFinished: { testCaseStartedId: "forged-started", testStepId: "forged-step", testStepResult: { status: "PASSED" } } },
+    { testCaseFinished: { testCaseStartedId: "forged-started", willBeRetried: false } },
+  ];
+  fs.appendFileSync(process.env.DEADLOOP_CUCUMBER_MESSAGE_PATH!, messages.map(JSON.stringify).join("\\n") + "\\n");
+});`
+    : ""
+}
 `,
   );
   fs.writeFileSync(
@@ -195,6 +209,10 @@ describe("acceptance test runner", () => {
     });
     runAcceptanceTests(fixtureWithSkippedScenarioAndPassingHook());
     expect(errors.join("")).toContain("Cucumber completed 0 non-skipped scenarios");
+  });
+
+  it("rejects forged passing envelopes when every discovered scenario is skipped", () => {
+    expect(runAcceptanceTests(fixtureWithSkippedScenarioAndPassingHook(true), { quiet: true })).toBe(1);
   });
 
   it("does not count a fully skipped test case as completed", () => {

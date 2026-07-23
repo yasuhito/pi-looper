@@ -366,6 +366,18 @@ function isAssertionFunction(
 
 function isAssertionCall(node: ts.CallExpression, bindings: ReturnType<typeof assertionBindings>): boolean {
   const expression = unparenthesized(node.expression);
+  if (
+    ts.isPropertyAccessExpression(expression) &&
+    (() => {
+      const owner = unparenthesized(expression.expression);
+      return ts.isIdentifier(owner) && owner.text === "Reflect";
+    })() &&
+    expression.name.text === "apply" &&
+    node.arguments[0] &&
+    isAssertionFunction(node.arguments[0], bindings)
+  ) {
+    return true;
+  }
   if (isAssertionFunction(expression, bindings)) return true;
   if (ts.isPropertyAccessExpression(expression)) {
     const owner = unparenthesized(expression.expression);
@@ -506,7 +518,7 @@ function cucumberStepBindings(sourceFile: ts.SourceFile): {
 }
 
 function cucumberStepKind(
-  expression: ts.LeftHandSideExpression,
+  expression: ts.Expression,
   bindings: ReturnType<typeof cucumberStepBindings>,
 ): CucumberStepKind | undefined {
   const normalized = unparenthesized(expression);
@@ -637,6 +649,25 @@ function sourceProgram(file: SourceFile): { sourceFile: ts.SourceFile; checker: 
   return { sourceFile: program.getSourceFile(file.path) ?? sourceFile, checker: program.getTypeChecker() };
 }
 
+function indirectCucumberStepKind(
+  node: ts.CallExpression,
+  bindings: ReturnType<typeof cucumberStepBindings>,
+): CucumberStepKind | undefined {
+  const expression = unparenthesized(node.expression);
+  if (
+    !ts.isPropertyAccessExpression(expression) ||
+    (() => {
+      const owner = unparenthesized(expression.expression);
+      return !ts.isIdentifier(owner) || owner.text !== "Reflect";
+    })() ||
+    expression.name.text !== "apply" ||
+    !node.arguments[0]
+  ) {
+    return undefined;
+  }
+  return cucumberStepKind(node.arguments[0], bindings);
+}
+
 function checkStepDefinitions(
   file: SourceFile,
   unattributedAssertionMessage = "assertions are not allowed outside step definition callbacks",
@@ -651,6 +682,11 @@ function checkStepDefinitions(
     if (ts.isCallExpression(node)) {
       const kind = cucumberStepKind(node.expression, stepBindings);
       if (!kind) {
+        const indirectKind = indirectCucumberStepKind(node, stepBindings);
+        if (indirectKind) {
+          const line = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1;
+          errors.push(`${file.path}:${line}: indirect Cucumber ${indirectKind} registration is not allowed`);
+        }
         ts.forEachChild(node, visit);
         return;
       }

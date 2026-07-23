@@ -236,6 +236,13 @@ describe("acceptance test rules", () => {
     );
   });
 
+  it("rejects an assertion invoked with Reflect.apply in a Given definition", () => {
+    const source = validSteps.replace("this.tracked = true;", "Reflect.apply(assert.ok, assert, [true]); this.tracked = true;");
+    expect(checkAcceptanceRules(sources({ stepDefinitions: [{ path: "bad.steps.ts", source }] }))).toContain(
+      "bad.steps.ts:4: Given step definition must not contain assertions",
+    );
+  });
+
   it("rejects a destructuring-assignment assertion alias in a Given definition", () => {
     const source = validSteps
       .replace(
@@ -306,6 +313,16 @@ require("@cucumber/cucumber").Then("検証は安全のため拒否される", fu
 `;
     expect(checkAcceptanceRules(sources({ stepDefinitions: [{ path: "bad.steps.ts", source }] }))).toContain(
       "bad.steps.ts:2: Then step definition must contain exactly one direct assertion (found 0)",
+    );
+  });
+
+  it("rejects a Cucumber Then registration invoked with Reflect.apply", () => {
+    const source = `
+import { Then } from "@cucumber/cucumber";
+Reflect.apply(Then, undefined, ["検証は安全のため拒否される", () => {}]);
+`;
+    expect(checkAcceptanceRules(sources({ stepDefinitions: [{ path: "bad.steps.ts", source }] }))).toContain(
+      "bad.steps.ts:3: indirect Cucumber Then registration is not allowed",
     );
   });
 
