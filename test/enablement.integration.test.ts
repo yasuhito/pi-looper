@@ -4,6 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { schedulerLockName } from "../src/project-identity";
+
 type CommandContext = { cwd: string; mode: string; ui: { notify: () => void; setStatus: () => void }; isIdle?: () => boolean; hasPendingMessages?: () => boolean };
 type CommandHandler = (_args: string, ctx: CommandContext) => Promise<void>;
 
@@ -85,14 +87,14 @@ async function loadExtension(
   return { commands, ghCommands, messages };
 }
 
-function writeConfig(root: string, repoPath: string, options: { autoMerge?: boolean; worktreeRoot?: string } = {}): void {
+function writeConfig(root: string, repoPath: string, options: { autoMerge?: boolean; worktreeRoot?: string; githubRepo?: string } = {}): void {
   const stateDir = path.join(root, ".pi", "agent", "deadloop");
   mkdirSync(stateDir, { recursive: true });
   writeFileSync(path.join(stateDir, "projects.json"), JSON.stringify({
     projects: [{
       id: "demo",
       repoPath,
-      githubRepo: "owner/demo",
+      githubRepo: options.githubRepo || "owner/demo",
       automations: [],
       ...(options.autoMerge === undefined ? {} : { autoMerge: options.autoMerge }),
       ...(options.worktreeRoot === undefined ? {} : { worktreeRoot: options.worktreeRoot }),
@@ -128,12 +130,21 @@ describe("enablement command integration", () => {
     expect(extension.messages.at(-1)).toContain("deadloop enabled");
   });
 
-  it("keeps first-enable auto-merge disabled after an unrelated configuration edit", async () => {
+  it("accepts a repeated enable as explicit acknowledgement of a preexisting true auto-merge setting", async () => {
     const { root, repoPath } = fixtureRepository();
     writeConfig(root, repoPath, { autoMerge: true });
     const extension = await loadExtension(root);
     await invoke(extension.commands.get("deadloop-enable")!, repoPath);
-    writeConfig(root, repoPath, { autoMerge: true, worktreeRoot: "/tmp/other" });
+
+    await invoke(extension.commands.get("deadloop-enable")!, repoPath);
+
+    expect(extension.messages.at(-1)).toContain("autoMerge is on");
+  });
+
+  it("forces a preexisting true auto-merge setting off on first enable", async () => {
+    const { root, repoPath } = fixtureRepository();
+    writeConfig(root, repoPath, { autoMerge: true });
+    const extension = await loadExtension(root);
 
     await invoke(extension.commands.get("deadloop-enable")!, repoPath);
 
@@ -217,6 +228,29 @@ describe("enablement command integration", () => {
     expect(extension.ghCommands.some((args) => args[0] === "label" && args[1] === "create" && args[2] === "needs-triage")).toBe(false);
   });
 
+  it("does not record enablement when a configured repository at the checkout path has a mismatched GitHub identity", async () => {
+    const { root, repoPath } = fixtureRepository();
+    writeConfig(root, repoPath, { githubRepo: "other/demo" });
+    const extension = await loadExtension(root);
+
+    await invoke(extension.commands.get("deadloop-enable")!, repoPath);
+
+    expect(existsSync(path.join(root, ".pi", "agent", "deadloop", "enabled-projects.json"))).toBe(false);
+  });
+
+  it("revokes existing permission when configuration changes to a mismatched GitHub identity", async () => {
+    const { root, repoPath } = fixtureRepository();
+    writeConfig(root, repoPath);
+    const extension = await loadExtension(root);
+    await invoke(extension.commands.get("deadloop-enable")!, repoPath);
+    writeConfig(root, repoPath, { githubRepo: "other/demo" });
+
+    await invoke(extension.commands.get("deadloop-enable")!, repoPath);
+
+    const state = JSON.parse(readFileSync(path.join(root, ".pi", "agent", "deadloop", "enabled-projects.json"), "utf8"));
+    expect(state.projects[0].enabled).toBe(false);
+  });
+
   it("does not record enablement when label preparation fails", async () => {
     const { root, repoPath } = fixtureRepository();
     writeConfig(root, repoPath);
@@ -271,7 +305,8 @@ describe("enablement command integration", () => {
     const { root, repoPath } = fixtureRepository();
     writeConfig(root, repoPath);
     const stateDir = path.join(root, ".pi", "agent", "deadloop");
-    writeFileSync(path.join(stateDir, "scheduler.demo.lock"), JSON.stringify({ pid: 4242 }));
+    const lockPath = path.join(stateDir, schedulerLockName({ id: "demo", repoPath, githubRepo: "owner/demo" }));
+    writeFileSync(lockPath, JSON.stringify({ pid: 4242, token: "owner" }));
     vi.spyOn(process, "kill").mockImplementation(((pid: number, signal?: number | string) => {
       if (pid === 4242 && signal === 0) return true;
       return true;
@@ -296,7 +331,8 @@ describe("enablement command integration", () => {
 
     await vi.advanceTimersByTimeAsync(30_000);
 
-    expect(existsSync(path.join(root, ".pi", "agent", "deadloop", "scheduler.demo.lock"))).toBe(false);
+    const lockName = schedulerLockName({ id: "demo", repoPath, githubRepo: "owner/demo" });
+    expect(existsSync(path.join(root, ".pi", "agent", "deadloop", lockName))).toBe(false);
   });
 
   it("stops an enabled primary checkout when disabled", async () => {

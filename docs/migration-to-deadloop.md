@@ -22,6 +22,8 @@ Local config path:
 Pi commands:
 
 ```text
+/deadloop-enable
+/deadloop-disable
 /deadloop-status
 /deadloop-doctor
 ```
@@ -63,7 +65,7 @@ If your target repository has shared policy, rename it:
 git mv pi-looper.project.json deadloop.json
 ```
 
-Update runbooks and scripts to use `/deadloop-status`, `/deadloop-doctor`, and `DEADLOOP_*` variables.
+Update runbooks and scripts to use `/deadloop-enable`, `/deadloop-disable`, `/deadloop-status`, `/deadloop-doctor`, and `DEADLOOP_*` variables. Re-enable each repository with `/deadloop-enable` after migrating.
 
 ## Not changed
 

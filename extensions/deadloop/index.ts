@@ -25,7 +25,13 @@ import { readClaudeConfig } from "../../src/agent-trust.cjs";
 import { runScheduledAutomation } from "../../src/automation-runner";
 const { createAsyncHerdrRunner } = require("../../src/herdr-runner.ts");
 const { acquireLock, releaseOwned } = require("../../src/enablement-lock.cjs");
+const {
+  acquireSchedulerLock: acquireSchedulerFileLock,
+  releaseSchedulerLock: releaseSchedulerFileLock,
+} = require("../../src/scheduler-lock.cjs");
+import { inferredProjectId, schedulerLockName } from "../../src/project-identity";
 import {
+  acknowledgeAutoMerge,
   findEnabledProject,
   isEnabledProjectState,
   normalizeEnablementState,
@@ -158,12 +164,14 @@ function implicitProjectFromCwd(cwd) {
   if (!repoPath) return null;
   const gitCommonDir = gitOutput(cwd, ["rev-parse", "--git-common-dir"]);
   if (!gitCommonDir || isLinkedGitWorktree(repoPath, gitCommonDir)) return null;
-  const id = sanitizeId(path.basename(repoPath));
+  const githubRepo = inferGithubRepo(repoPath);
+  if (!githubRepo) return null;
+  const id = inferredProjectId(repoPath, githubRepo);
   const raw = {
     id,
     enabled: true,
     repoPath,
-    githubRepo: inferGithubRepo(repoPath),
+    githubRepo,
     baseBranch: inferBaseBranch(repoPath),
     worktreeRoot: path.join(os.homedir(), ".herdr", "worktrees", id),
     autoMerge: false,
@@ -227,6 +235,31 @@ function loadProjects(cwd) {
   return result.projects;
 }
 
+function resolveEnableProject(cwd, identity) {
+  const result = loadProjectsResult(cwd, { includeDisabled: true });
+  if (!result.ok) throw new Error(result.reason);
+  const repoPath = path.resolve(identity.repoPath);
+  const configuredAtPath = result.projects.filter((project) => {
+    try {
+      return path.resolve(project.repoPath) === repoPath;
+    } catch {
+      return false;
+    }
+  });
+  if (configuredAtPath.length > 0) {
+    const exact = configuredAtPath.filter((project) => project.githubRepo === identity.githubRepo);
+    if (exact.length !== 1 || configuredAtPath.length !== 1) {
+      throw new Error("configured repository identity does not match the canonical checkout identity");
+    }
+    return exact[0];
+  }
+  const implicit = implicitProjectFromCwd(cwd);
+  if (!implicit || path.resolve(implicit.repoPath) !== repoPath || implicit.githubRepo !== identity.githubRepo) {
+    throw new Error("repository configuration could not be resolved safely");
+  }
+  return implicit;
+}
+
 function loadEnablementState() {
   try {
     const text = fs.readFileSync(ENABLEMENT_PATH, "utf8");
@@ -288,9 +321,9 @@ function extensionCodeWarning() {
   return codeFreshnessWarning(MODULE_LOAD_TIME_MS, sources);
 }
 
-function ownsSchedulerLock(project) {
+function ownsSchedulerLock(project, token = null) {
   const lock = readLock(projectLockPath(project));
-  return Number(lock?.pid) === process.pid;
+  return Number(lock?.pid) === process.pid && (!token || lock?.token === token);
 }
 
 function statusWarnings(extraWarnings = [], project = null) {
@@ -323,69 +356,29 @@ function saveState(state) {
   }
 }
 
-function isPidAlive(pid) {
-  if (!Number.isInteger(pid) || pid <= 0) return false;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return error?.code === "EPERM";
-  }
-}
-
 function readLock(lockPath) {
   return readJsonFile(lockPath, null);
 }
 
 function projectLockPath(project) {
-  return path.join(STATE_DIR, `scheduler.${sanitizeId(project.id)}.lock`);
+  return path.join(STATE_DIR, schedulerLockName(project));
 }
 
 function acquireSchedulerLock(project) {
   fs.mkdirSync(STATE_DIR, { recursive: true });
-
   const lockPath = projectLockPath(project);
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const fd = fs.openSync(lockPath, "wx");
-      try {
-        fs.writeFileSync(
-          fd,
-          JSON.stringify({ pid: process.pid, cwd: process.cwd(), projectId: project.id, startedAt: Date.now() }),
-        );
-      } finally {
-        fs.closeSync(fd);
-      }
-      return { acquired: true, owner: process.pid, lockPath };
-    } catch (error) {
-      if (error?.code !== "EEXIST") throw error;
-      const lock = readLock(lockPath);
-      const owner = Number(lock?.pid);
-      if (owner === process.pid) return { acquired: true, owner, lockPath };
-      if (isPidAlive(owner)) return { acquired: false, owner, lockPath };
-      try {
-        fs.unlinkSync(lockPath);
-      } catch (unlinkError) {
-        if (unlinkError?.code !== "ENOENT") return { acquired: false, owner, lockPath };
-      }
-    }
-  }
-  const lock = readLock(lockPath);
-  return { acquired: false, owner: Number(lock?.pid) || null, lockPath };
+  return acquireSchedulerFileLock(lockPath, {
+    cwd: process.cwd(),
+    projectId: project.id,
+    startedAt: Date.now(),
+  });
 }
 
-function releaseSchedulerLock(project) {
-  const lockPaths = [projectLockPath(project)];
-  for (const lockPath of lockPaths) {
-    const lock = readLock(lockPath);
-    if (Number(lock?.pid) !== process.pid) continue;
-    try {
-      fs.unlinkSync(lockPath);
-    } catch (error) {
-      if (error?.code !== "ENOENT") {
-        console.warn(`[${EXTENSION_NAME}] failed to release lock:`, error?.message || error);
-      }
-    }
+function releaseSchedulerLock(lockPath, token) {
+  try {
+    releaseSchedulerFileLock(lockPath, token);
+  } catch (error) {
+    console.warn(`[${EXTENSION_NAME}] failed to release lock:`, error?.message || error);
   }
 }
 
@@ -677,7 +670,8 @@ async function detectProjectIdentity(pi, cwd) {
   const githubRepo = identities[0];
   const upstream = await pi.exec("git", ["-C", repoPath, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], { timeout: 15_000 });
   const baseBranch = upstream.code === 0 ? upstream.stdout.trim() || "origin/main" : "origin/main";
-  return { repoPath, githubRepo, baseBranch, id: sanitizeId(path.basename(repoPath)), worktreeRoot: path.join(os.homedir(), ".herdr", "worktrees", sanitizeId(path.basename(repoPath))) };
+  const id = inferredProjectId(repoPath, githubRepo);
+  return { repoPath, githubRepo, baseBranch, id, worktreeRoot: path.join(os.homedir(), ".herdr", "worktrees", id) };
 }
 
 async function prepareGithub(pi, githubRepo) {
@@ -764,7 +758,7 @@ export default function (pi) {
       setLooperStatus(ctx, "deadloop is not enabled for this repository");
       return;
     }
-    if (project.id !== active.project.id) {
+    if (projectLockPath(project) !== active.lockPath) {
       setLooperStatus(ctx, "skipped: active project changed since scheduler lock was acquired");
       return;
     }
@@ -801,7 +795,7 @@ export default function (pi) {
     if (startupTick) clearTimeout(startupTick);
     timer = null;
     startupTick = null;
-    if (ownsLock && active?.project) releaseSchedulerLock(active.project);
+    if (ownsLock && active?.lockPath && active?.lockToken) releaseSchedulerLock(active.lockPath, active.lockToken);
     ownsLock = false;
     active = null;
     setLooperStatus(ctx, undefined);
@@ -809,11 +803,11 @@ export default function (pi) {
 
   function startScheduler(ctx, project) {
     if (process.env.DEADLOOP === "off" || process.env.DEADLOOP_AUTOMATIONS === "off") return;
-    if (active?.project?.id === project.id) return;
+    if (active?.lockPath === projectLockPath(project)) return;
     stopScheduler(ctx);
     const lock = acquireSchedulerLock(project);
     ownsLock = lock.acquired;
-    active = { project, lockPath: lock.lockPath };
+    active = { project, lockPath: lock.lockPath, lockToken: lock.token };
     if (!ownsLock) {
       setLooperStatus(ctx, `${project.id} standby: owner pid ${lock.owner ?? "unknown"}`);
       return;
@@ -830,28 +824,38 @@ export default function (pi) {
     handler: async (_args, ctx) => {
       try {
         const identity = await detectProjectIdentity(pi, ctx.cwd);
-        const configuredProject = activeProject(ctx.cwd, loadProjectsResult(ctx.cwd, { includeDisabled: true }).projects);
-        const firstEnable = {
-          firstEnableAutoMerge: Boolean(configuredProject?.autoMerge),
-        };
         const wasEnabled = Boolean(findEnabledProject(loadEnablementState(), identity));
+        let configuredProject;
+        try {
+          configuredProject = resolveEnableProject(ctx.cwd, identity);
+        } catch (error) {
+          if (wasEnabled) await updateEnablementState((state) => removeEnabledProject(state, identity));
+          throw error;
+        }
+        const firstEnable = {
+          firstEnableAutoMerge: Boolean(configuredProject.autoMerge),
+        };
         try {
           await prepareGithub(pi, identity.githubRepo);
         } catch (error) {
           if (wasEnabled) await updateEnablementState((state) => removeEnabledProject(state, identity));
           throw error;
         }
-        let newlyEnabled = false;
         await updateEnablementState((state) => {
+          if (wasEnabled && configuredProject.autoMerge) return acknowledgeAutoMerge(state, identity);
           if (findEnabledProject(state, identity)) return state;
-          newlyEnabled = true;
           return upsertEnabledProject(state, identity, Date.now(), firstEnable);
         });
-        const projects = loadProjects(ctx.cwd);
-        const project = await activeSchedulerProject(ctx.cwd, projects);
-        if (!project) throw new Error("enabled repository configuration could not be resolved safely");
-        if (newlyEnabled && !findEnabledProject(loadEnablementState(), identity)?.autoMergeAcknowledged) project.autoMerge = false;
-        startScheduler(ctx, project);
+        let project;
+        try {
+          const projects = loadProjects(ctx.cwd);
+          project = await activeSchedulerProject(ctx.cwd, projects);
+          if (!project) throw new Error("enabled repository configuration could not be resolved safely");
+          startScheduler(ctx, project);
+        } catch (error) {
+          await updateEnablementState((state) => removeEnabledProject(state, identity));
+          throw error;
+        }
         const owner = ownsLock ? "this session" : `another session (pid ${readLock(projectLockPath(project))?.pid || "unknown"})`;
         const message = `deadloop enabled for ${identity.githubRepo}; scheduler owner: ${owner}. autoMerge is ${project.autoMerge ? "on (existing local setting preserved)" : "off"}.`;
         if (ctx.mode === "print" || ctx.mode === "json") console.log(message);

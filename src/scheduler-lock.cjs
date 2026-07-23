@@ -1,0 +1,41 @@
+const crypto = require("node:crypto");
+const fs = require("node:fs");
+
+const { reclaimStale, releaseOwned } = require("./enablement-lock.cjs");
+
+function readOwner(lockPath) {
+  try {
+    const value = JSON.parse(fs.readFileSync(lockPath, "utf8"));
+    return value && Number.isInteger(value.pid) && value.pid > 0 ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function acquireSchedulerLock(lockPath, metadata, hooks = {}) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const token = crypto.randomUUID();
+    try {
+      const fd = fs.openSync(lockPath, "wx");
+      try {
+        fs.writeFileSync(fd, JSON.stringify({ ...metadata, pid: process.pid, token }));
+      } finally {
+        fs.closeSync(fd);
+      }
+      return { acquired: true, owner: process.pid, lockPath, token };
+    } catch (error) {
+      if (error.code !== "EEXIST") throw error;
+      const owner = readOwner(lockPath);
+      if (!reclaimStale(lockPath, hooks)) {
+        return { acquired: false, owner: owner?.pid || null, lockPath, token: null };
+      }
+    }
+  }
+  return { acquired: false, owner: readOwner(lockPath)?.pid || null, lockPath, token: null };
+}
+
+function releaseSchedulerLock(lockPath, token) {
+  releaseOwned(lockPath, token);
+}
+
+module.exports = { acquireSchedulerLock, readOwner, releaseSchedulerLock };
