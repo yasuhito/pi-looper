@@ -37,29 +37,58 @@ describe("issue coordinator deterministic driver", () => {
     expect(runDriverFixture("driver-cleanup-candidate.json").driverAction).toBe("cleanup_applied");
   });
 
-  it("lets disable persist revocation while cleanup is blocked", async () => {
+  it("prevents cleanup mutations after disable revokes enablement", async () => {
     const root = mkdtempSync(path.join(os.tmpdir(), "deadloop-cleanup-disable-"));
     const repo = path.join(root, "repo");
+    const worktree = path.join(root, "worktree");
+    const artifact = path.join(worktree, ".deadloop", "run.json");
     const stateDir = path.join(root, ".pi", "agent", "deadloop");
     const binDir = path.join(root, "bin");
     const started = path.join(root, "cleanup-started");
     const release = path.join(root, "cleanup-release");
+    const removed = path.join(root, "workspace-removed");
     const lockPath = path.join(stateDir, "enabled-projects.json.lock");
     const statePath = path.join(stateDir, "enabled-projects.json");
     mkdirSync(repo, { recursive: true });
+    mkdirSync(path.dirname(artifact), { recursive: true });
     mkdirSync(stateDir, { recursive: true });
     mkdirSync(binDir, { recursive: true });
     spawnSync("git", ["init", "-q", repo]);
+    spawnSync("git", ["init", "-q", worktree]);
     spawnSync("git", ["-C", repo, "remote", "add", "origin", "https://github.com/owner/repo.git"]);
+    writeFileSync(artifact, "{}\n");
     writeFileSync(statePath, JSON.stringify({ projects: [{
       repoPath: repo, githubRepo: "owner/repo", githubRepositoryId: "R_repo", enabledAt: 1,
       firstEnableAutoMerge: false, firstStartPending: false, lastObservedAutoMerge: false,
       autoMergeAcknowledged: false, enabled: true,
     }] }));
-    writeFileSync(path.join(binDir, "gh"), "#!/bin/sh\nprintf '%s\\n' '{\"id\":\"R_repo\"}'\n");
-    writeFileSync(path.join(binDir, "node"), `#!/bin/sh\ncase "$*" in\n  *cleanup-completed-worker-worktrees.ts*--plan*) printf '%s\\n' '{"candidates":[{"branch":"agent/issue-1","path":"/worktree","workspaceId":"w1"}]}' ;;\n  *cleanup-completed-worker-worktrees.ts*--apply*) touch '${started}'; while [ ! -f '${release}' ]; do sleep 0.05; done; printf '%s\\n' '{"removed":[]}' ;;\n  *) exec '${process.execPath}' "$@" ;;\nesac\n`);
-    chmodSync(path.join(binDir, "gh"), 0o755);
-    chmodSync(path.join(binDir, "node"), 0o755);
+    writeFileSync(path.join(binDir, "gh"), `#!/bin/sh
+if [ "$1 $2" = "pr list" ]; then
+  case "$*" in
+    *--state\\ merged*) printf '%s\\n' '[{"number":1,"state":"MERGED","mergedAt":"2026-07-04T00:00:00Z","headRefName":"agent/issue-1","headRefOid":"final","labels":[{"name":"agent:review"}]}]' ;;
+    *) printf '%s\\n' '[]' ;;
+  esac
+else
+  printf '%s\\n' '{"id":"R_repo"}'
+fi
+`);
+    writeFileSync(path.join(binDir, "git"), `#!/bin/sh
+if [ "$1" = "-C" ] && [ "$2" = "${repo}" ] && [ "$3 $4" = "fetch --prune" ]; then exit 0; fi
+if [ "$1" = "-C" ] && [ "$2" = "${worktree}" ] && [ "$3" = "ls-files" ]; then
+  touch '${started}'
+  while [ ! -f '${release}' ]; do sleep 0.05; done
+fi
+exec /usr/bin/git "$@"
+`);
+    writeFileSync(path.join(binDir, "herdr"), `#!/bin/sh
+if [ "$1 $2" = "worktree list" ]; then
+  printf '%s\\n' '{"result":{"worktrees":[{"branch":"agent/issue-1","is_linked_worktree":true,"open_workspace_id":"w1","path":"${worktree}"}]}}'
+  exit 0
+fi
+if [ "$1 $2" = "worktree remove" ]; then touch '${removed}'; exit 0; fi
+exit 2
+`);
+    for (const command of ["gh", "git", "herdr"]) chmodSync(path.join(binDir, command), 0o755);
 
     const child = spawn(process.execPath, [path.resolve(driverScript)], {
       cwd: process.cwd(),
@@ -88,14 +117,14 @@ describe("issue coordinator deterministic driver", () => {
         releaseOwned(lockPath, lock.token);
         disableCompleted = true;
       } catch {}
-      const stateDisabledWhileCleanupBlocked = JSON.parse(readFileSync(statePath, "utf8")).projects[0].enabled === false;
       writeFileSync(release, "release");
       await new Promise<void>((resolve) => child.once("exit", () => resolve()));
 
-      expect({ cleanupStarted: existsSync(started), disableCompleted, stateDisabledWhileCleanupBlocked }).toEqual({
+      expect({ cleanupStarted: existsSync(started), disableCompleted, artifactExists: existsSync(artifact), workspaceRemoved: existsSync(removed) }).toEqual({
         cleanupStarted: true,
         disableCompleted: true,
-        stateDisabledWhileCleanupBlocked: true,
+        artifactExists: true,
+        workspaceRemoved: false,
       });
     } finally {
       writeFileSync(release, "release");

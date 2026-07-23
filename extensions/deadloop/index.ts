@@ -1207,14 +1207,15 @@ export default function (pi) {
         writeEnableAttempt(primaryRepoPath, enableAttemptToken);
         identity = await detectProjectIdentity(pi, primaryRepoPath);
         previousEnabledAt = await withEnablementStateLock(async () => findEnabledProject(loadEnablementState(), identity)?.enabledAt);
-        const configuredProject = resolveEnableProject(ctx.cwd, identity);
-        const firstEnable = { firstEnableAutoMerge: Boolean(configuredProject.autoMerge) };
+        resolveEnableProject(ctx.cwd, identity);
         await prepareGithub(pi, identity, primaryRepoPath, enableAttemptToken);
         await withEnablementStateLock(async () => {
           if (!ownsEnableAttempt(primaryRepoPath, enableAttemptToken)) {
             throw new Error("enablement was revoked while preflight was running");
           }
           await revalidateLocalProjectIdentity(pi, identity);
+          const configuredProject = resolveEnableProject(ctx.cwd, identity);
+          const firstEnable = { firstEnableAutoMerge: Boolean(configuredProject.autoMerge) };
           const next = upsertEnabledProject(loadEnablementState(), identity, Date.now(), firstEnable, enableAttemptToken);
           enabledAt = findEnabledProject(next, identity)?.enabledAt;
           saveEnablementState(next);

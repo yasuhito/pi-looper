@@ -559,6 +559,38 @@ describe("enablement command integration", () => {
     expect(extension.messages.at(-1)).toContain("autoMerge is off");
   });
 
+  it("keeps auto-merge gated when configuration turns on during enablement preflight", async () => {
+    const { root, repoPath } = fixtureRepository();
+    writeConfig(root, repoPath, { autoMerge: false });
+    let reportPreflightBlocked!: () => void;
+    let releasePreflight!: () => void;
+    const preflightBlocked = new Promise<void>((resolve) => { reportPreflightBlocked = resolve; });
+    const preflightRelease = new Promise<void>((resolve) => { releasePreflight = resolve; });
+    const extension = await loadExtension(root, {
+      beforeLabelLookup: async () => {
+        reportPreflightBlocked();
+        await preflightRelease;
+      },
+    });
+
+    const enabling = invoke(extension.commands.get("deadloop-enable")!, repoPath);
+    await preflightBlocked;
+    writeConfig(root, repoPath, { autoMerge: true });
+    releasePreflight();
+    await enabling;
+
+    const enabled = JSON.parse(readFileSync(path.join(root, ".pi", "agent", "deadloop", "enabled-projects.json"), "utf8")).projects[0];
+    expect({
+      firstEnableAutoMerge: enabled.firstEnableAutoMerge,
+      autoMergeAcknowledged: enabled.autoMergeAcknowledged,
+      message: extension.messages.at(-1),
+    }).toEqual({
+      firstEnableAutoMerge: true,
+      autoMergeAcknowledged: false,
+      message: "deadloop enabled for owner/demo; scheduler owner: this session. autoMerge is off.",
+    });
+  });
+
   it("preserves a post-enable false-to-true auto-merge confirmation across disable and re-enable", async () => {
     const { root, repoPath } = fixtureRepository();
     writeConfig(root, repoPath, { autoMerge: true });
