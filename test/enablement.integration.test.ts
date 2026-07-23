@@ -9,6 +9,7 @@ const { withEnabledProjectLock } = require("../src/enabled-operation.cjs");
 
 type CommandContext = { cwd: string; mode: string; ui: { notify: () => void; setStatus: () => void }; isIdle?: () => boolean; hasPendingMessages?: () => boolean };
 type CommandHandler = (_args: string, ctx: CommandContext) => Promise<void>;
+type EventHandler = (_event: unknown, ctx: CommandContext) => Promise<void>;
 
 const originalHome = process.env.HOME;
 const originalStateDir = process.env.PI_CODING_AGENT_DIR;
@@ -101,15 +102,17 @@ async function loadExtension(
     noUpstream?: boolean;
     defaultBranch?: string;
     beforeGithubRepoCheck?: () => Promise<void>;
+    beforeLabelLookup?: (name: string) => Promise<void>;
     afterEnablementSaved?: () => Promise<void>;
     runAutomationScript?: () => Promise<{ code: number; stdout: string; stderr: string }>;
   } = {},
-): Promise<{ commands: Map<string, CommandHandler>; ghCommands: string[][]; messages: string[] }> {
+): Promise<{ commands: Map<string, CommandHandler>; events: Map<string, EventHandler>; ghCommands: string[][]; messages: string[] }> {
   process.env.HOME = root;
   process.env.PI_CODING_AGENT_DIR = path.join(root, ".pi", "agent");
   process.env.PATH = `${path.join(root, "bin")}:${originalPath || ""}`;
   vi.resetModules();
   const commands = new Map<string, CommandHandler>();
+  const events = new Map<string, EventHandler>();
   const messages: string[] = [];
   const ghCommands: string[][] = [];
   // @ts-expect-error Vitest transforms this runtime extension import.
@@ -148,6 +151,7 @@ async function loadExtension(
       }
       if (command === "gh" && args[0] === "api") {
         const name = decodeURIComponent(args.at(-1)?.split("/").at(-1) || "");
+        await options.beforeLabelLookup?.(name);
         return (options.labels || []).some((label: any) => label.name === name)
           ? { code: 0, stdout: "", stderr: "" }
           : { code: 1, stdout: "", stderr: "gh: Not Found (HTTP 404)" };
@@ -158,12 +162,12 @@ async function loadExtension(
       throw new Error(`unexpected command: ${command} ${args.join(" ")}`);
     },
     registerCommand: (name: string, command: { handler: CommandHandler }) => commands.set(name, command.handler),
-    on: () => undefined,
+    on: (name: string, handler: EventHandler) => events.set(name, handler),
     sendMessage: (message: { content: string }) => messages.push(message.content),
     sendUserMessage: () => undefined,
     testing: options.afterEnablementSaved ? { afterEnablementSaved: options.afterEnablementSaved } : undefined,
   });
-  return { commands, ghCommands, messages };
+  return { commands, events, ghCommands, messages };
 }
 
 function writeConfig(root: string, repoPath: string, options: { autoMerge?: boolean; worktreeRoot?: string; githubRepo?: string; enabled?: boolean } = {}): void {
@@ -343,6 +347,30 @@ describe("enablement command integration", () => {
       disabled: true,
       finalMessage: "deadloop was not enabled: enablement was revoked while preflight was running",
     });
+  });
+
+  it("does not create later labels after disable cancels label preparation", async () => {
+    const { root, repoPath } = fixtureRepository();
+    writeConfig(root, repoPath);
+    let releaseLookup!: () => void;
+    let secondLookupStarted!: () => void;
+    const started = new Promise<void>((resolve) => { secondLookupStarted = resolve; });
+    const blocked = new Promise<void>((resolve) => { releaseLookup = resolve; });
+    const extension = await loadExtension(root, {
+      beforeLabelLookup: async (name) => {
+        if (name !== "agent:implement") return;
+        secondLookupStarted();
+        await blocked;
+      },
+    });
+    const enabling = invoke(extension.commands.get("deadloop-enable")!, repoPath);
+    await started;
+
+    await invoke(extension.commands.get("deadloop-disable")!, repoPath);
+    releaseLookup();
+    await enabling;
+
+    expect(extension.ghCommands.filter((args) => args[0] === "label" && args[1] === "create").map((args) => args[2])).toEqual(["ready-for-agent"]);
   });
 
   it("does not let a failed enable revoke a later successful concurrent enable", async () => {
@@ -601,7 +629,7 @@ describe("enablement command integration", () => {
     expect(extension.messages.at(-1)).toContain("deadloop enabled for owner/demo");
   });
 
-  it("rejects disable from a linked worktree without removing primary enablement", async () => {
+  it("removes primary enablement when disable runs from a linked worktree", async () => {
     const { root, repoPath } = fixtureRepository();
     const linkedPath = path.join(root, "linked");
     git(repoPath, ["worktree", "add", "--quiet", "-b", "linked", linkedPath]);
@@ -612,7 +640,7 @@ describe("enablement command integration", () => {
 
     await invoke(extension.commands.get("deadloop-disable")!, linkedPath);
 
-    expect(JSON.parse(readFileSync(statePath, "utf8")).projects).toHaveLength(1);
+    expect(JSON.parse(readFileSync(statePath, "utf8")).projects[0].enabled).toBe(false);
   });
 
   it("keeps enablement state unchanged when status is reported", async () => {
@@ -836,6 +864,48 @@ describe("enablement command integration", () => {
       takeoverWaitedForQuiescence: true,
       staleRunDidNotSave: true,
       restartedAfterQuiescence: true,
+    });
+  });
+
+  it("waits for a blocked scheduler tick and lock release during session shutdown", async () => {
+    const { root, repoPath } = fixtureRepository();
+    writeConfig(root, repoPath);
+    const configPath = path.join(root, ".pi", "agent", "deadloop", "projects.json");
+    const config = JSON.parse(readFileSync(configPath, "utf8"));
+    config.projects[0].automations = [{
+      name: "blocked",
+      schedule: "*/1 * * * *",
+      precheckFile: "issue-coordinator.precheck.sh",
+      promptFile: "issue-coordinator.md",
+    }];
+    writeFileSync(configPath, JSON.stringify(config));
+    let releasePrecheck!: () => void;
+    let precheckStarted!: () => void;
+    const started = new Promise<void>((resolve) => { precheckStarted = resolve; });
+    const blocked = new Promise<void>((resolve) => { releasePrecheck = resolve; });
+    const extension = await loadExtension(root, {
+      runAutomationScript: async () => {
+        precheckStarted();
+        await blocked;
+        return { code: 0, stdout: "", stderr: "" };
+      },
+    });
+    vi.useFakeTimers();
+    await invoke(extension.commands.get("deadloop-enable")!, repoPath);
+    const tick = vi.advanceTimersByTimeAsync(3_000);
+    await started;
+    const lockPath = path.join(root, ".pi", "agent", "deadloop", schedulerLockName({ repoPath, githubRepo: "owner/demo" }));
+    let shutdownResolved = false;
+
+    const shutdown = extension.events.get("session_shutdown")!(undefined, { cwd: repoPath, mode: "interactive", ui: { notify: () => undefined, setStatus: () => undefined } }).then(() => { shutdownResolved = true; });
+    await Promise.resolve();
+    const beforeRelease = { shutdownResolved, lockExists: existsSync(lockPath) };
+    releasePrecheck();
+    await Promise.all([tick, shutdown]);
+
+    expect({ beforeRelease, lockExistsAfterShutdown: existsSync(lockPath) }).toEqual({
+      beforeRelease: { shutdownResolved: false, lockExists: true },
+      lockExistsAfterShutdown: false,
     });
   });
 

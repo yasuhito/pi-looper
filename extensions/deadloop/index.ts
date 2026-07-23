@@ -783,7 +783,7 @@ function findCheckoutPointingToGitDir(commonDir) {
   return "";
 }
 
-async function detectPrimaryCheckout(pi, cwd) {
+async function detectPrimaryCheckout(pi, cwd, allowLinkedWorktree = false) {
   const repoPath = (await commandExec(pi, "git", ["-C", cwd, "rev-parse", "--show-toplevel"])).stdout.trim();
   const gitDir = (await commandExec(pi, "git", ["-C", cwd, "rev-parse", "--git-dir"])).stdout.trim();
   const commonDir = (await commandExec(pi, "git", ["-C", cwd, "rev-parse", "--git-common-dir"])).stdout.trim();
@@ -794,7 +794,8 @@ async function detectPrimaryCheckout(pi, cwd) {
       ? configuredWorktree.stdout.trim()
       : findCheckoutPointingToGitDir(path.resolve(cwd, commonDir)) || worktreeList.match(/^worktree (.+)$/m)?.[1];
     if (!primaryCheckout) throw new Error("linked worktree primary checkout could not be resolved");
-    throw new Error(`linked worktrees cannot be enabled or disabled; use the primary checkout: ${primaryCheckout}`);
+    if (allowLinkedWorktree) return path.resolve(cwd, primaryCheckout);
+    throw new Error(`linked worktrees cannot be enabled; use the primary checkout: ${primaryCheckout}`);
   }
   return repoPath;
 }
@@ -891,7 +892,7 @@ async function detectProjectIdentity(pi, cwd) {
   };
 }
 
-async function prepareGithub(pi, identity) {
+async function prepareGithub(pi, identity, repoPath, enableAttemptToken) {
   await commandExec(pi, "gh", ["auth", "status"]);
   const view = JSON.parse((await commandExec(pi, "gh", ["repo", "view", identity.githubRepo, "--json", "id,viewerPermission,nameWithOwner"])).stdout || "{}");
   if (view.nameWithOwner !== identity.githubRepo || String(view.id || "") !== identity.githubRepositoryId) {
@@ -901,10 +902,16 @@ async function prepareGithub(pi, identity) {
     throw new Error("GitHub write permission is required to enable deadloop");
   }
   for (const [name, color] of STANDARD_LABELS) {
+    if (!ownsEnableAttempt(repoPath, enableAttemptToken)) {
+      throw new Error("enablement was revoked while preflight was running");
+    }
     const lookup = await pi.exec("gh", ["api", "--silent", `repos/${identity.githubRepo}/labels/${encodeURIComponent(name)}`], { timeout: 15_000 });
     if (lookup.code === 0) continue;
     if (!/HTTP 404\b/.test(`${lookup.stderr || ""}\n${lookup.stdout || ""}`)) {
       throw new Error((lookup.stderr || lookup.stdout || `label lookup failed for ${name}`).trim());
+    }
+    if (!ownsEnableAttempt(repoPath, enableAttemptToken)) {
+      throw new Error("enablement was revoked while preflight was running");
     }
     await commandExec(pi, "gh", ["label", "create", name, "-R", identity.githubRepo, "--color", color]);
   }
@@ -992,6 +999,7 @@ export default function (pi) {
   let ownsLock = false;
   let stopRequested = false;
   let pendingStart = null;
+  let activeTickPromise = null;
 
   async function tick(ctx) {
     if (!active) return;
@@ -1060,12 +1068,23 @@ export default function (pi) {
       if (active === schedulerRun && ownsLock && !stopRequested) saveState(state);
     } finally {
       running = false;
-      if (stopRequested) {
+    }
+  }
+
+  function runTick(ctx) {
+    if (activeTickPromise) return activeTickPromise;
+    const currentTick = tick(ctx);
+    activeTickPromise = currentTick;
+    const finishTick = () => {
+      if (activeTickPromise === currentTick) activeTickPromise = null;
+      if (stopRequested && !running) {
         const restart = pendingStart;
         finishStoppingScheduler(ctx);
         if (restart) startScheduler(restart.ctx, restart.project);
       }
-    }
+    };
+    void currentTick.then(finishTick, finishTick);
+    return currentTick;
   }
 
   function finishStoppingScheduler(ctx) {
@@ -1083,12 +1102,13 @@ export default function (pi) {
     timer = null;
     startupTick = null;
     pendingStart = null;
-    if (running) {
+    if (activeTickPromise) {
       stopRequested = true;
       setLooperStatus(ctx, undefined);
-      return;
+      return activeTickPromise;
     }
     finishStoppingScheduler(ctx);
+    return Promise.resolve();
   }
 
   function startScheduler(ctx, project) {
@@ -1127,9 +1147,9 @@ export default function (pi) {
       return { started: true };
     }
     updateStatus(ctx, project, loadState());
-    timer = setInterval(() => tick(ctx).catch((error) => console.warn(`[${EXTENSION_NAME}] tick failed:`, error?.message || error)), TICK_MS);
+    timer = setInterval(() => runTick(ctx).catch((error) => console.warn(`[${EXTENSION_NAME}] tick failed:`, error?.message || error)), TICK_MS);
     timer.unref?.();
-    startupTick = setTimeout(() => tick(ctx).catch((error) => console.warn(`[${EXTENSION_NAME}] startup tick failed:`, error?.message || error)), 3000);
+    startupTick = setTimeout(() => runTick(ctx).catch((error) => console.warn(`[${EXTENSION_NAME}] startup tick failed:`, error?.message || error)), 3000);
     startupTick.unref?.();
     return { started: true };
   }
@@ -1150,7 +1170,7 @@ export default function (pi) {
         previousEnabledAt = await withEnablementStateLock(async () => findEnabledProject(loadEnablementState(), identity)?.enabledAt);
         const configuredProject = resolveEnableProject(ctx.cwd, identity);
         const firstEnable = { firstEnableAutoMerge: Boolean(configuredProject.autoMerge) };
-        await prepareGithub(pi, identity);
+        await prepareGithub(pi, identity, primaryRepoPath, enableAttemptToken);
         await withEnablementStateLock(async () => {
           if (!ownsEnableAttempt(primaryRepoPath, enableAttemptToken)) {
             throw new Error("enablement was revoked while preflight was running");
@@ -1196,7 +1216,7 @@ export default function (pi) {
     handler: async (_args, ctx) => {
       try {
         let message;
-        const repoPath = await detectPrimaryCheckout(pi, ctx.cwd);
+        const repoPath = await detectPrimaryCheckout(pi, ctx.cwd, true);
         const attemptPath = enableAttemptPath(repoPath);
         const attempt = readJsonFile(attemptPath, null);
         if (attempt?.repoPath === path.resolve(repoPath) && attempt?.token) {
@@ -1232,5 +1252,7 @@ export default function (pi) {
     }
   });
 
-  pi.on("session_shutdown", async (_event, ctx) => stopScheduler(ctx));
+  pi.on("session_shutdown", async (_event, ctx) => {
+    await stopScheduler(ctx);
+  });
 }
