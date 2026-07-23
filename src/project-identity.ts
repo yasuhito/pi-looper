@@ -23,5 +23,6 @@ export function inferredProjectId(repoPath: string, githubRepo: string): string 
 }
 
 export function schedulerLockName(project: { id?: string; repoPath: string; githubRepo: string }): string {
-  return `scheduler.${projectIdentityHash(project.repoPath, project.githubRepo)}.lock`;
+  const repositoryHash = crypto.createHash("sha256").update(project.githubRepo.toLowerCase()).digest("hex").slice(0, 12);
+  return `scheduler.${repositoryHash}.lock`;
 }

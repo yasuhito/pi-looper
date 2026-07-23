@@ -1,5 +1,5 @@
 import { execFileSync, spawn } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -111,7 +111,7 @@ async function loadExtension(
   return { commands, ghCommands, messages };
 }
 
-function writeConfig(root: string, repoPath: string, options: { autoMerge?: boolean; worktreeRoot?: string; githubRepo?: string } = {}): void {
+function writeConfig(root: string, repoPath: string, options: { autoMerge?: boolean; worktreeRoot?: string; githubRepo?: string; enabled?: boolean } = {}): void {
   const stateDir = path.join(root, ".pi", "agent", "deadloop");
   mkdirSync(stateDir, { recursive: true });
   writeFileSync(path.join(stateDir, "projects.json"), JSON.stringify({
@@ -120,6 +120,7 @@ function writeConfig(root: string, repoPath: string, options: { autoMerge?: bool
       repoPath,
       githubRepo: options.githubRepo || "owner/demo",
       automations: [],
+      ...(options.enabled === undefined ? {} : { enabled: options.enabled }),
       ...(options.autoMerge === undefined ? {} : { autoMerge: options.autoMerge }),
       ...(options.worktreeRoot === undefined ? {} : { worktreeRoot: options.worktreeRoot }),
     }],
@@ -152,6 +153,26 @@ afterEach(() => {
 });
 
 describe("enablement command integration", () => {
+  it("does not schedule a configured project until dedicated enablement exists", async () => {
+    const { root, repoPath } = fixtureRepository();
+    writeConfig(root, repoPath, { enabled: false });
+
+    await loadExtension(root);
+
+    expect(existsSync(path.join(root, ".pi", "agent", "deadloop", "enabled-projects.json"))).toBe(false);
+  });
+
+  it("uses overrides from a configured project whose obsolete enabled field is false", async () => {
+    const { root, repoPath } = fixtureRepository();
+    writeConfig(root, repoPath, { enabled: false });
+    const extension = await loadExtension(root);
+
+    await invoke(extension.commands.get("deadloop-enable")!, repoPath);
+
+    const lockPath = path.join(root, ".pi", "agent", "deadloop", schedulerLockName({ repoPath, githubRepo: "owner/demo" }));
+    expect(JSON.parse(readFileSync(lockPath, "utf8")).projectId).toBe("demo");
+  });
+
   it("records enablement without deadloop.json or projects.json", async () => {
     const { root, repoPath } = fixtureRepository();
     const extension = await loadExtension(root);
@@ -354,6 +375,25 @@ describe("enablement command integration", () => {
     await invoke(extension.commands.get(command)!, repoPath);
 
     expect(gitReportMutationSnapshot(repoPath)).toBe(before);
+  });
+
+  it("keeps one scheduler owner across distinct primary clones of one GitHub repository", async () => {
+    const { root, repoPath } = fixtureRepository();
+    const secondRepoPath = path.join(root, "second-primary");
+    execFileSync("git", ["clone", "--quiet", path.join(root, "origin.git"), secondRepoPath]);
+    git(secondRepoPath, ["remote", "set-url", "origin", "https://github.com/owner/demo.git"]);
+    const firstExtension = await loadExtension(root);
+    await invoke(firstExtension.commands.get("deadloop-enable")!, repoPath);
+    const secondExtension = await loadExtension(root);
+
+    await invoke(secondExtension.commands.get("deadloop-enable")!, secondRepoPath);
+
+    const stateDir = path.join(root, ".pi", "agent", "deadloop");
+    const schedulerLocks = readdirSync(stateDir).filter((name) => name.startsWith("scheduler."));
+    expect({ locks: schedulerLocks.length, message: secondExtension.messages.at(-1) }).toEqual({
+      locks: 1,
+      message: expect.stringContaining(`another session (pid ${process.pid})`),
+    });
   });
 
   it("reports another live lock owner as standby", async () => {

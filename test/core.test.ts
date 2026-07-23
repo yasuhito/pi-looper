@@ -15,6 +15,7 @@ import {
   normalizeProject,
   parseProjectsConfig,
   parseEveryMinutes,
+  projectsFromConfig,
   REPO_POLICY_FILE,
   renderTemplate,
   resolveConfigPath,
@@ -322,6 +323,32 @@ describe("deterministic extension core", () => {
     expect(renderTemplate("{{reviewerAgent}}", templateValues(project, project.automations[0], "/auto"))).toBe(
       "claude",
     );
+  });
+
+  it("retains overrides from a project whose obsolete enabled field is false", () => {
+    const [project] = projectsFromConfig({
+      projects: [{
+        id: "configured",
+        enabled: false,
+        repoPath: "/repo",
+        githubRepo: "owner/repo",
+        baseBranch: "origin/release",
+        checkCommand: "npm run verify",
+        worktreeRoot: "/worktrees/configured",
+        autoMerge: true,
+        automations: [],
+      }],
+    });
+
+    expect(project).toMatchObject({
+      id: "configured",
+      enabled: true,
+      baseBranch: "origin/release",
+      checkCommand: "npm run verify",
+      worktreeRoot: "/worktrees/configured",
+      autoMerge: true,
+      automations: [],
+    });
   });
 
   it("defaults auto merge to disabled", () => {

@@ -545,7 +545,7 @@ export function normalizeProject(raw: RawProject, configSource?: ProjectConfigSo
   const id = sanitizeId(raw.id || raw.githubRepo || raw.repoPath);
   const project: NormalizedProject = {
     id,
-    enabled: raw.enabled !== false,
+    enabled: true,
     repoPath: raw.repoPath,
     githubRepo: raw.githubRepo,
     baseBranch: raw.baseBranch || "origin/main",
@@ -588,8 +588,7 @@ export function projectsFromConfig(
     .map((raw) => {
       const layered = applyRepoPolicy(raw, options);
       return normalizeProject(layered.raw, layered.source);
-    })
-    .filter((project) => project.enabled);
+    });
 }
 
 export function parseProjectsConfig(
