@@ -81,12 +81,16 @@ function finalizeBranchUpdate(args: FinalizeArgs, ops: FinalizeOps = { run: defa
         args.githubRepo,
         "--json",
         "state,headRefName,headRefOid,isCrossRepository",
-      ]),
+      ], MAX_GUARDED_OPERATION_MS),
     );
     const guard = decidePushGuard(pr, args.branch, args.expectedHead);
     if (guard.action !== "push") return guard;
     checked(ops, ["git", "-C", args.repo, "push", "--porcelain", args.remote, `HEAD:refs/heads/${args.branch}`], MAX_GUARDED_OPERATION_MS);
-    return { action: "pushed", reason: "branch_updated", headOid: checked(ops, ["git", "-C", args.repo, "rev-parse", "HEAD"]) };
+    return {
+      action: "pushed",
+      reason: "branch_updated",
+      headOid: checked(ops, ["git", "-C", args.repo, "rev-parse", "HEAD"], MAX_GUARDED_OPERATION_MS),
+    };
   };
   if (ops.assertEnabled) {
     ops.assertEnabled(project);

@@ -182,7 +182,7 @@ function implicitProjectFromCwd(cwd, options: { fetchPolicy?: boolean } = {}) {
     enabled: true,
     repoPath,
     githubRepo,
-    baseBranch: inferBaseBranch(repoPath),
+    baseBranch: enabledIdentity?.baseBranch || inferBaseBranch(repoPath),
     worktreeRoot: path.join(os.homedir(), ".herdr", "worktrees", id),
     autoMerge: false,
   };
@@ -256,7 +256,7 @@ function loadProjectsResult(
         enableIdentity = {
           repoPath,
           githubRepo: enabled.githubRepo,
-          baseBranch: inferBaseBranch(repoPath),
+          baseBranch: enabled.baseBranch || inferBaseBranch(repoPath),
           worktreeRoot: path.join(os.homedir(), ".herdr", "worktrees", id),
         };
       }
@@ -774,17 +774,35 @@ async function detectProjectIdentity(pi, cwd) {
     throw new Error("all origin fetch and push URLs must identify GitHub repositories");
   }
   const canonicalIdentities = new Set<string>();
+  const defaultBranches = new Set<string>();
   for (const remoteIdentity of new Set(identities)) {
-    const view = JSON.parse((await commandExec(pi, "gh", ["repo", "view", remoteIdentity, "--json", "nameWithOwner"])).stdout || "{}");
+    const view = JSON.parse(
+      (await commandExec(pi, "gh", ["repo", "view", remoteIdentity, "--json", "nameWithOwner,defaultBranchRef"])).stdout || "{}",
+    );
     if (!view.nameWithOwner) throw new Error(`GitHub repository identity could not be resolved for ${remoteIdentity}`);
     canonicalIdentities.add(String(view.nameWithOwner));
+    if (view.defaultBranchRef?.name) defaultBranches.add(String(view.defaultBranchRef.name));
   }
   if (canonicalIdentities.size !== 1) {
     throw new Error("all origin fetch and push URLs must resolve to exactly the same GitHub repository");
   }
   const githubRepo = [...canonicalIdentities][0];
   const upstream = await pi.exec("git", ["-C", repoPath, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], { timeout: 15_000 });
-  const baseBranch = upstream.code === 0 ? upstream.stdout.trim() || "origin/main" : "origin/main";
+  let baseBranch = upstream.code === 0 ? upstream.stdout.trim() : "";
+  if (!baseBranch) {
+    if (defaultBranches.size !== 1) throw new Error("GitHub default branch could not be resolved unambiguously");
+    const defaultBranch = [...defaultBranches][0];
+    await commandExec(pi, "git", [
+      "-C",
+      repoPath,
+      "fetch",
+      "--quiet",
+      "origin",
+      `+refs/heads/${defaultBranch}:refs/remotes/origin/${defaultBranch}`,
+    ], 30_000);
+    baseBranch = `origin/${defaultBranch}`;
+  }
+  await commandExec(pi, "git", ["-C", repoPath, "rev-parse", "--verify", "--quiet", `${baseBranch}^{commit}`]);
   const id = inferredProjectId(repoPath, githubRepo);
   return {
     repoPath,
@@ -805,10 +823,13 @@ async function prepareGithub(pi, githubRepo) {
   if (!["ADMIN", "MAINTAIN", "WRITE"].includes(String(view.viewerPermission || "").toUpperCase())) {
     throw new Error("GitHub write permission is required to enable deadloop");
   }
-  const labels = JSON.parse((await commandExec(pi, "gh", ["label", "list", "-R", githubRepo, "--limit", "1000", "--json", "name"])).stdout || "[]");
-  const existing = new Set(labels.map((label) => label.name));
   for (const [name, color] of STANDARD_LABELS) {
-    if (!existing.has(name)) await commandExec(pi, "gh", ["label", "create", name, "-R", githubRepo, "--color", color]);
+    const lookup = await pi.exec("gh", ["api", "--silent", `repos/${githubRepo}/labels/${encodeURIComponent(name)}`], { timeout: 15_000 });
+    if (lookup.code === 0) continue;
+    if (!/HTTP 404\b/.test(`${lookup.stderr || ""}\n${lookup.stdout || ""}`)) {
+      throw new Error((lookup.stderr || lookup.stdout || `label lookup failed for ${name}`).trim());
+    }
+    await commandExec(pi, "gh", ["label", "create", name, "-R", githubRepo, "--color", color]);
   }
 }
 function automationRunnerDeps(pi, ctx, project) {

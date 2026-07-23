@@ -10,7 +10,7 @@ const {
 const head = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const base = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
-function finalizeWith(commands: string[][], actualHead = head, headAfterAuthorization?: string) {
+function finalizeWith(commands: string[][], actualHead = head, headAfterAuthorization?: string, timeouts: Array<number | undefined> = []) {
   let observedHead = actualHead;
   return finalizeBranchUpdate(
     {
@@ -29,8 +29,9 @@ function finalizeWith(commands: string[][], actualHead = head, headAfterAuthoriz
     },
     {
       assertEnabled: () => { if (headAfterAuthorization) observedHead = headAfterAuthorization; },
-      run: (args: string[]) => {
+      run: (args: string[], timeoutMs?: number) => {
         commands.push(args);
+        timeouts.push(timeoutMs);
         if (args[0] === "gh") {
           return {
             status: 0,
@@ -116,6 +117,15 @@ describe("PR branch-update safety", () => {
     finalizeWith(commands);
 
     expect(commands.findIndex((command) => command[0] === "node")).toBeLessThan(commands.findIndex((command) => command[0] === "gh"));
+  });
+
+  it("bounds every command after authorization while holding the enablement lock", () => {
+    const commands: string[][] = [];
+    const timeouts: Array<number | undefined> = [];
+    finalizeWith(commands, head, undefined, timeouts);
+    const firstGuardedCommand = commands.findIndex((command) => command[0] === "gh");
+
+    expect(timeouts.slice(firstGuardedCommand)).toEqual([25_000, 25_000, 25_000]);
   });
 
   it("pushes only the selected existing branch without force", () => {

@@ -8,6 +8,7 @@ export type EnabledProject = {
   enabledAt: number;
   enableAttemptToken?: string;
   githubAliases?: string[];
+  baseBranch?: string;
   firstEnableAutoMerge: boolean;
   firstStartPending: boolean;
   lastObservedAutoMerge: boolean;
@@ -17,7 +18,7 @@ export type EnabledProject = {
 
 export type EnablementState = { projects: EnabledProject[] };
 
-export type ProjectIdentity = Pick<EnabledProject, "repoPath" | "githubRepo" | "githubAliases">;
+export type ProjectIdentity = Pick<EnabledProject, "repoPath" | "githubRepo" | "githubAliases" | "baseBranch">;
 
 function normalizedPath(value: string): string {
   return path.resolve(value);
@@ -67,6 +68,7 @@ export function upsertEnabledProject(
         enabledAt,
         ...(enableAttemptToken ? { enableAttemptToken } : {}),
         ...(identity.githubAliases ? { githubAliases: identity.githubAliases } : {}),
+        ...(identity.baseBranch ? { baseBranch: identity.baseBranch } : {}),
         enabled: true,
       },
     ],

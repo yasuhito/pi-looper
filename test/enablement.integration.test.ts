@@ -87,6 +87,7 @@ async function loadExtension(
     canonicalRepos?: Record<string, string>;
     upstream?: string;
     noUpstream?: boolean;
+    defaultBranch?: string;
     beforeGithubRepoCheck?: () => Promise<void>;
     afterEnablementSaved?: () => Promise<void>;
   } = {},
@@ -108,7 +109,6 @@ async function loadExtension(
           return { code: 0, stdout: `${remote}\n`, stderr: "" };
         }
         if (args.includes("--symbolic-full-name")) return options.noUpstream ? { code: 128, stdout: "", stderr: "no upstream" } : { code: 0, stdout: `${options.upstream || ""}\n`, stderr: "" };
-        if (args.includes("fetch")) return { code: 0, stdout: "", stderr: "" };
         if (args.includes("show")) return { code: 1, stdout: "", stderr: "missing" };
         try {
           return { code: 0, stdout: execFileSync("git", args, { encoding: "utf8" }), stderr: "" };
@@ -126,11 +126,17 @@ async function loadExtension(
           stdout: JSON.stringify({
             viewerPermission: options.viewerPermission || "WRITE",
             nameWithOwner: options.canonicalRepos?.[requestedRepo] || "owner/demo",
+            defaultBranchRef: { name: options.defaultBranch || "master" },
           }),
           stderr: "",
         };
       }
-      if (command === "gh" && args[0] === "label" && args[1] === "list") return { code: 0, stdout: JSON.stringify(options.labels || []), stderr: "" };
+      if (command === "gh" && args[0] === "api") {
+        const name = decodeURIComponent(args.at(-1)?.split("/").at(-1) || "");
+        return (options.labels || []).some((label: any) => label.name === name)
+          ? { code: 0, stdout: "", stderr: "" }
+          : { code: 1, stdout: "", stderr: "gh: Not Found (HTTP 404)" };
+      }
       if (command === "gh" && args[0] === "label" && args[1] === "create") {
         return options.failLabel ? { code: 1, stdout: "", stderr: "label denied" } : { code: 0, stdout: "", stderr: "" };
       }
@@ -366,14 +372,15 @@ describe("enablement command integration", () => {
     expect(extension.messages.at(-1)).toContain("autoMerge is on");
   });
 
-  it("enables a primary checkout whose current branch has no upstream", async () => {
+  it("enables a no-upstream checkout from a verified non-main GitHub default branch", async () => {
     const { root, repoPath } = fixtureRepository();
     writeConfig(root, repoPath);
-    const extension = await loadExtension(root, { noUpstream: true });
+    const extension = await loadExtension(root, { noUpstream: true, defaultBranch: "master" });
 
     await invoke(extension.commands.get("deadloop-enable")!, repoPath);
 
-    expect(extension.messages.at(-1)).toContain("deadloop enabled");
+    const state = JSON.parse(readFileSync(path.join(root, ".pi", "agent", "deadloop", "enabled-projects.json"), "utf8"));
+    expect(state.projects[0].baseBranch).toBe("origin/master");
   });
 
   it("rejects a different configured origin push repository", async () => {
@@ -418,10 +425,10 @@ describe("enablement command integration", () => {
     expect(JSON.parse(readFileSync(path.join(root, ".pi", "agent", "deadloop", "enabled-projects.json"), "utf8")).projects[0].enabled).toBe(false);
   });
 
-  it("does not create a standard label that appears after the first 100 labels", async () => {
+  it("does not create a required label beyond the old 1,000-label limit", async () => {
     const { root, repoPath } = fixtureRepository();
     writeConfig(root, repoPath);
-    const labels = Array.from({ length: 100 }, (_, index) => ({ name: `label-${index}` }));
+    const labels = Array.from({ length: 1_001 }, (_, index) => ({ name: `label-${index}` }));
     labels.push({ name: "needs-triage" });
     const extension = await loadExtension(root, { labels });
 
