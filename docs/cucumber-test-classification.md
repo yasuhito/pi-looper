@@ -624,7 +624,21 @@
 
 2026-07-23 に、削除前の `test/project-check.test.ts` を残した状態で `npm test` を実行し、Vitest の対象9件を含む496件と Cucumber の11シナリオ（55ステップ）がすべて成功した（Vitest 2.05秒、Cucumber 0.473秒）。
 
-続いて `完了報告は元の内容で復元される` の期待値だけを一時的に `intentionally broken` へ変更し、`npx cucumber-js --name '^失敗した自動チェック後に完了報告を復元する$'` を実行した。対象シナリオは終了コード1となり、`acceptance/features/project-check-safety.feature.md:41` とステップ定義の位置、および実際値 `pending` と誤った期待値 `intentionally broken` の差を表示して失敗した。期待値を元へ戻した後に同じコマンドを再実行し、1シナリオ、5ステップが成功した（0.72秒）。この確認後に、置換済みのVitest 9件を削除した。
+続いて T357-T365 の各期待結果を一件ずつ一時的に壊し、`npx cucumber-js --name '^<移行先シナリオ名>$'` で対応するシナリオだけを実行した。各実行は終了コード1となり、機能ファイルとステップ定義の位置に加えて、次の差または失敗した式を表示した。
+
+| ID | 一時的に壊した期待結果 | Cucumber が表示した証拠 |
+|---:|---|---|
+| T357 | 終了コード `0` を `99` に変更 | 実際値 `0` と期待値 `99` の差 |
+| T358 | 終了コード `1` を `99` に変更 | 実際値 `1` と期待値 `99` の差 |
+| T359 | 終了コード `1` を `99` に変更 | 実際値 `1` と期待値 `99` の差 |
+| T360 | 完了報告を `intentionally broken` に変更 | 実際値 `pending` と誤った期待値の差 |
+| T361 | 診断情報を `intentionally broken` に変更 | 実際値 `diagnostic output` と誤った期待値の差 |
+| T362 | 経過時間の上限を `0` ミリ秒に変更 | `(this.elapsedMs ?? Infinity) < 0` が偽になった式と位置 |
+| T363 | 診断情報を `intentionally broken` に変更 | 実際値 `diagnostic output` と誤った期待値の差 |
+| T364 | 診断情報を `intentionally broken` に変更 | 実際値 `diagnostic output` と誤った期待値の差 |
+| T365 | 中断時の終了コード `130` を `99` に変更 | 実際値 `130` と期待値 `99` の差 |
+
+T358 は、未追跡の `.deadloop/promise.json` と `.pi-subagents/metadata.json` がある事前状態で Git 管理された `package.json` を壊して確認した。すべての期待値を元へ戻した後、`npx cucumber-js acceptance/features/project-check-safety.feature.md` を再実行し、11シナリオ、56ステップが成功した（0.471秒）。この確認後に、置換済みのVitest 9件を削除した。
 
 ### `test/promise-file-contract.test.ts`（6件）
 
