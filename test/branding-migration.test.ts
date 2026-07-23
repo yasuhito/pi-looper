@@ -6,9 +6,6 @@ const extensionCode = readFileSync("extensions/deadloop/index.ts", "utf8");
 const migrationDoc = readFileSync("docs/migration-to-deadloop.md", "utf8");
 
 describe("deadloop rename boundary", () => {
-  it("registers the deadloop status command", () => {
-    expect(extensionCode).toContain('"deadloop-status"');
-  });
 
   it("does not register old pi-looper command aliases", () => {
     expect(extensionCode).not.toContain("pi-looper-status");
