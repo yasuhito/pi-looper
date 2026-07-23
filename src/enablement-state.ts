@@ -38,6 +38,7 @@ function normalizeEnablementStateValue(value: unknown): EnablementStateValue | n
   const normalized: EnabledProjectValue[] = [];
   const repoPaths = new Set<string>();
   const githubRepos = new Set<string>();
+  const githubRepositoryIds = new Set<string>();
   for (const candidate of candidates) {
     if (!candidate || typeof candidate !== "object" || Array.isArray(candidate) || !validIdentity(candidate)) return null;
     const record = candidate as EnabledProjectValue;
@@ -57,9 +58,10 @@ function normalizeEnablementStateValue(value: unknown): EnablementStateValue | n
     }
     const repoPath = path.resolve(record.repoPath);
     const githubRepo = record.githubRepo.toLowerCase();
-    if (repoPaths.has(repoPath) || githubRepos.has(githubRepo)) return null;
+    if (repoPaths.has(repoPath) || githubRepos.has(githubRepo) || githubRepositoryIds.has(record.githubRepositoryId)) return null;
     repoPaths.add(repoPath);
     githubRepos.add(githubRepo);
+    githubRepositoryIds.add(record.githubRepositoryId);
     normalized.push({
       repoPath,
       githubRepo: record.githubRepo,

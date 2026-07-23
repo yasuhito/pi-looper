@@ -22,7 +22,8 @@ export function inferredProjectId(repoPath: string, githubRepo: string): string 
   return `${sanitizeId(path.basename(repoPath))}-${projectIdentityHash(repoPath, githubRepo)}`;
 }
 
-export function schedulerLockName(project: { id?: string; repoPath: string; githubRepo: string }): string {
-  const repositoryHash = crypto.createHash("sha256").update(project.githubRepo.toLowerCase()).digest("hex").slice(0, 12);
+export function schedulerLockName(project: { githubRepositoryId?: string }): string {
+  if (!project.githubRepositoryId) throw new Error("immutable GitHub repository ID is required for scheduler ownership");
+  const repositoryHash = crypto.createHash("sha256").update(project.githubRepositoryId).digest("hex").slice(0, 12);
   return `scheduler.${repositoryHash}.lock`;
 }

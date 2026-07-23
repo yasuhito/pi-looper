@@ -103,6 +103,7 @@ async function loadExtension(
     defaultBranch?: string;
     beforeGithubRepoCheck?: () => Promise<void>;
     beforeLabelLookup?: (name: string) => Promise<void>;
+    beforeLabelCreate?: (name: string) => Promise<void>;
     afterEnablementSaved?: () => Promise<void>;
     runAutomationScript?: () => Promise<{ code: number; stdout: string; stderr: string }>;
   } = {},
@@ -157,6 +158,7 @@ async function loadExtension(
           : { code: 1, stdout: "", stderr: "gh: Not Found (HTTP 404)" };
       }
       if (command === "gh" && args[0] === "label" && args[1] === "create") {
+        await options.beforeLabelCreate?.(args[2]);
         return options.failLabel ? { code: 1, stdout: "", stderr: "label denied" } : { code: 0, stdout: "", stderr: "" };
       }
       throw new Error(`unexpected command: ${command} ${args.join(" ")}`);
@@ -281,7 +283,7 @@ describe("enablement command integration", () => {
 
     await invoke(extension.commands.get("deadloop-enable")!, repoPath);
 
-    const lockPath = path.join(root, ".pi", "agent", "deadloop", schedulerLockName({ repoPath, githubRepo: "owner/demo" }));
+    const lockPath = path.join(root, ".pi", "agent", "deadloop", schedulerLockName({ githubRepositoryId: "R_demo" }));
     expect(JSON.parse(readFileSync(lockPath, "utf8")).projectId).toBe("demo");
   });
 
@@ -347,6 +349,33 @@ describe("enablement command integration", () => {
       disabled: true,
       finalMessage: "deadloop was not enabled: enablement was revoked while preflight was running",
     });
+  });
+
+  it("waits for an authorized label creation to settle before disable returns", async () => {
+    const { root, repoPath } = fixtureRepository();
+    writeConfig(root, repoPath);
+    let releaseCreate!: () => void;
+    let labelCreateStarted!: () => void;
+    const started = new Promise<void>((resolve) => { labelCreateStarted = resolve; });
+    const blocked = new Promise<void>((resolve) => { releaseCreate = resolve; });
+    let disableResolved = false;
+    const extension = await loadExtension(root, {
+      beforeLabelCreate: async (name) => {
+        if (name !== "ready-for-agent") return;
+        labelCreateStarted();
+        await blocked;
+      },
+    });
+    const enabling = invoke(extension.commands.get("deadloop-enable")!, repoPath);
+    await started;
+
+    const disabling = invoke(extension.commands.get("deadloop-disable")!, repoPath).then(() => { disableResolved = true; });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const resolvedBeforeCreateSettled = disableResolved;
+    releaseCreate();
+    await Promise.all([enabling, disabling]);
+
+    expect(resolvedBeforeCreateSettled).toBe(false);
   });
 
   it("does not create later labels after disable cancels label preparation", async () => {
@@ -688,17 +717,16 @@ describe("enablement command integration", () => {
     const secondRepoPath = path.join(root, "second-primary");
     execFileSync("git", ["clone", "--quiet", path.join(root, "origin.git"), secondRepoPath]);
     git(secondRepoPath, ["remote", "set-url", "origin", "https://github.com/new/demo.git"]);
-    const aliases = { "old/demo": "owner/demo", "new/demo": "owner/demo", "owner/demo": "owner/demo" };
     const firstExtension = await loadExtension(root, {
       fetchRemote: "https://github.com/old/demo.git",
       pushRemote: "https://github.com/old/demo.git",
-      canonicalRepos: aliases,
+      canonicalRepos: { "old/demo": "old/demo" },
     });
     await invoke(firstExtension.commands.get("deadloop-enable")!, repoPath);
     const secondExtension = await loadExtension(root, {
       fetchRemote: "https://github.com/new/demo.git",
       pushRemote: "https://github.com/new/demo.git",
-      canonicalRepos: aliases,
+      canonicalRepos: { "new/demo": "new/demo" },
     });
 
     await invoke(secondExtension.commands.get("deadloop-enable")!, secondRepoPath);
@@ -715,7 +743,7 @@ describe("enablement command integration", () => {
     const { root, repoPath } = fixtureRepository();
     writeConfig(root, repoPath);
     const stateDir = path.join(root, ".pi", "agent", "deadloop");
-    const lockPath = path.join(stateDir, schedulerLockName({ id: "demo", repoPath, githubRepo: "owner/demo" }));
+    const lockPath = path.join(stateDir, schedulerLockName({ githubRepositoryId: "R_demo" }));
     writeFileSync(lockPath, JSON.stringify({ pid: 4242, token: "owner" }));
     vi.spyOn(process, "kill").mockImplementation(((pid: number, signal?: number | string) => {
       if (pid === 4242 && signal === 0) return true;
@@ -732,7 +760,7 @@ describe("enablement command integration", () => {
     const { root, repoPath } = fixtureRepository();
     writeConfig(root, repoPath);
     const stateDir = path.join(root, ".pi", "agent", "deadloop");
-    const lockPath = path.join(stateDir, schedulerLockName({ id: "demo", repoPath, githubRepo: "owner/demo" }));
+    const lockPath = path.join(stateDir, schedulerLockName({ githubRepositoryId: "R_demo" }));
     writeFileSync(lockPath, JSON.stringify({ pid: 4242, token: "owner" }));
     vi.spyOn(process, "kill").mockImplementation(((pid: number, signal?: number | string) => {
       if (pid === 4242 && signal === 0) return true;
@@ -758,7 +786,7 @@ describe("enablement command integration", () => {
 
     await vi.advanceTimersByTimeAsync(3_000);
 
-    const lockName = schedulerLockName({ id: "demo", repoPath, githubRepo: "owner/demo" });
+    const lockName = schedulerLockName({ githubRepositoryId: "R_demo" });
     expect(existsSync(path.join(root, ".pi", "agent", "deadloop", lockName))).toBe(false);
   });
 
@@ -772,7 +800,7 @@ describe("enablement command integration", () => {
 
     await vi.advanceTimersByTimeAsync(3_000);
 
-    const lockName = schedulerLockName({ id: "demo", repoPath, githubRepo: "owner/demo" });
+    const lockName = schedulerLockName({ githubRepositoryId: "R_demo" });
     expect(existsSync(path.join(root, ".pi", "agent", "deadloop", lockName))).toBe(false);
   });
 
@@ -789,7 +817,7 @@ describe("enablement command integration", () => {
 
     await vi.advanceTimersByTimeAsync(30_000);
 
-    const lockName = schedulerLockName({ id: "demo", repoPath, githubRepo: "owner/demo" });
+    const lockName = schedulerLockName({ githubRepositoryId: "R_demo" });
     expect(existsSync(path.join(root, ".pi", "agent", "deadloop", lockName))).toBe(false);
   });
 
@@ -809,7 +837,7 @@ describe("enablement command integration", () => {
 
     await vi.advanceTimersByTimeAsync(30_000);
 
-    const lockName = schedulerLockName({ id: "demo", repoPath, githubRepo: "owner/demo" });
+    const lockName = schedulerLockName({ githubRepositoryId: "R_demo" });
     expect(existsSync(path.join(root, ".pi", "agent", "deadloop", lockName))).toBe(false);
   });
 
@@ -840,7 +868,7 @@ describe("enablement command integration", () => {
     await invoke(extension.commands.get("deadloop-enable")!, repoPath);
     const tick = vi.advanceTimersByTimeAsync(3_000);
     await started;
-    const lockPath = path.join(root, ".pi", "agent", "deadloop", schedulerLockName({ repoPath, githubRepo: "owner/demo" }));
+    const lockPath = path.join(root, ".pi", "agent", "deadloop", schedulerLockName({ githubRepositoryId: "R_demo" }));
     const oldToken = JSON.parse(readFileSync(lockPath, "utf8")).token;
 
     await invoke(extension.commands.get("deadloop-disable")!, repoPath);
@@ -894,7 +922,7 @@ describe("enablement command integration", () => {
     await invoke(extension.commands.get("deadloop-enable")!, repoPath);
     const tick = vi.advanceTimersByTimeAsync(3_000);
     await started;
-    const lockPath = path.join(root, ".pi", "agent", "deadloop", schedulerLockName({ repoPath, githubRepo: "owner/demo" }));
+    const lockPath = path.join(root, ".pi", "agent", "deadloop", schedulerLockName({ githubRepositoryId: "R_demo" }));
     let shutdownResolved = false;
 
     const shutdown = extension.events.get("session_shutdown")!(undefined, { cwd: repoPath, mode: "interactive", ui: { notify: () => undefined, setStatus: () => undefined } }).then(() => { shutdownResolved = true; });
@@ -923,7 +951,7 @@ describe("enablement command integration", () => {
 
     await vi.advanceTimersByTimeAsync(30_000);
 
-    const lockName = schedulerLockName({ id: "demo", repoPath, githubRepo: "owner/demo" });
+    const lockName = schedulerLockName({ githubRepositoryId: "R_demo" });
     expect(existsSync(path.join(root, ".pi", "agent", "deadloop", lockName))).toBe(false);
   });
 

@@ -135,6 +135,7 @@ export type NormalizedProject = {
   enabled: boolean;
   repoPath?: string;
   githubRepo?: string;
+  githubRepositoryId?: string;
   baseBranch: string;
   worktreeRoot: string;
   checkCommand: string;

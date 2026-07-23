@@ -52,11 +52,22 @@ export function upsertEnabledProject(
   }
   const repoPath = normalizedPath(identity.repoPath);
   const existing = state?.projects || [];
-  const previous = existing.find((project) => project.githubRepo === identity.githubRepo && project.repoPath === repoPath);
-  const retained = existing.filter((project) => project.githubRepo !== identity.githubRepo && project.repoPath !== repoPath);
+  const previous = existing.find((project) => project.githubRepositoryId === identity.githubRepositoryId);
+  const retained = existing.filter((project) =>
+    project.githubRepositoryId !== identity.githubRepositoryId
+    && project.githubRepo !== identity.githubRepo
+    && project.repoPath !== repoPath
+  );
   const enabledAt = previous && previous.enabled !== false
     ? previous.enabledAt
     : Math.max(now, (previous?.enabledAt ?? 0) + 1);
+  const githubAliases = previous || identity.githubAliases
+    ? [...new Set([
+        ...(previous?.githubAliases || []),
+        ...(previous ? [previous.githubRepo] : []),
+        ...(identity.githubAliases || []),
+      ])]
+    : undefined;
   return {
     projects: [
       ...retained,
@@ -72,7 +83,7 @@ export function upsertEnabledProject(
         githubRepositoryId: identity.githubRepositoryId,
         enabledAt,
         ...(enableAttemptToken ? { enableAttemptToken } : {}),
-        ...(identity.githubAliases ? { githubAliases: identity.githubAliases } : {}),
+        ...(githubAliases ? { githubAliases } : {}),
         ...(identity.baseBranch ? { baseBranch: identity.baseBranch } : {}),
         enabled: true,
       },

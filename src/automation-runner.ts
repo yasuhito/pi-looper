@@ -193,6 +193,13 @@ async function runConfiguredDriver(
     return true;
   }
 
+  if (deps.isEnabled && !deps.isEnabled()) {
+    recordAutomationResult(entry, "disabled_before_driver");
+    entry.updatedAt = deps.now();
+    deps.saveState(state);
+    return true;
+  }
+
   let result: AutomationExecResult;
   try {
     result = await deps.runDriver(project, automation, driver.resolved);
@@ -345,13 +352,6 @@ export async function runScheduledAutomation(
 
   if (deps.isEnabled && !deps.isEnabled()) {
     recordAutomationResult(entry, "disabled_after_precheck");
-    entry.updatedAt = deps.now();
-    deps.saveState(state);
-    return;
-  }
-
-  if (deps.isEnabled && !deps.isEnabled()) {
-    recordAutomationResult(entry, "disabled_before_driver");
     entry.updatedAt = deps.now();
     deps.saveState(state);
     return;

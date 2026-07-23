@@ -102,8 +102,33 @@ describe("local enablement state", () => {
   it("rejects duplicate GitHub repositories", () => {
     expect(normalizeEnablementState({ projects: [
       { ...project, ...safetyFields, enabledAt: 1 },
-      { repoPath: "/repos/other", githubRepo: "OWNER/DEMO", ...safetyFields, enabledAt: 2 },
+      { repoPath: "/repos/other", githubRepo: "OWNER/DEMO", githubRepositoryId: "R_other", ...safetyFields, enabledAt: 2 },
     ] })).toBeNull();
+  });
+
+  it("rejects duplicate immutable GitHub repository IDs across renamed aliases", () => {
+    expect(normalizeEnablementState({ projects: [
+      { ...project, ...safetyFields, enabledAt: 1 },
+      { repoPath: "/repos/renamed", githubRepo: "owner/renamed", ...safetyFields, enabledAt: 2 },
+    ] })).toBeNull();
+  });
+
+  it("migrates a renamed repository record by immutable GitHub ID", () => {
+    const initial = upsertEnabledProject(null, { ...project, githubAliases: ["owner/old"] }, 10);
+    const renamed = upsertEnabledProject(initial, {
+      repoPath: "/repos/renamed",
+      githubRepo: "owner/renamed",
+      githubRepositoryId: project.githubRepositoryId,
+      githubAliases: ["owner/renamed"],
+    }, 20);
+
+    expect(renamed.projects).toEqual([expect.objectContaining({
+      repoPath: "/repos/renamed",
+      githubRepo: "owner/renamed",
+      githubRepositoryId: "R_demo",
+      enabledAt: 10,
+      githubAliases: ["owner/old", "owner/demo", "owner/renamed"],
+    })]);
   });
 
   it("rejects duplicate exact identities", () => {

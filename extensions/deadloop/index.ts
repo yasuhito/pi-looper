@@ -274,6 +274,15 @@ function loadProjectsResult(
   });
   const result = addImplicitProject(cwd, parsed, options);
   if (result.ok) {
+    const enablement = loadEnablementState();
+    result.projects = result.projects.map((project) => {
+      const enabled = enablement.projects.find((candidate) =>
+        candidate.repoPath === path.resolve(project.repoPath || "")
+        && candidate.githubRepo === project.githubRepo
+        && candidate.enabled !== false
+      );
+      return enabled ? { ...project, githubRepositoryId: enabled.githubRepositoryId } : project;
+    });
     if (!options.includeDisabled) result.projects = result.projects.filter((project) => isProjectEnabled(project));
     debugLog(
       "config",
@@ -910,10 +919,12 @@ async function prepareGithub(pi, identity, repoPath, enableAttemptToken) {
     if (!/HTTP 404\b/.test(`${lookup.stderr || ""}\n${lookup.stdout || ""}`)) {
       throw new Error((lookup.stderr || lookup.stdout || `label lookup failed for ${name}`).trim());
     }
-    if (!ownsEnableAttempt(repoPath, enableAttemptToken)) {
-      throw new Error("enablement was revoked while preflight was running");
-    }
-    await commandExec(pi, "gh", ["label", "create", name, "-R", identity.githubRepo, "--color", color]);
+    await withEnablementStateLock(async () => {
+      if (!ownsEnableAttempt(repoPath, enableAttemptToken)) {
+        throw new Error("enablement was revoked while preflight was running");
+      }
+      await commandExec(pi, "gh", ["label", "create", name, "-R", identity.githubRepo, "--color", color]);
+    });
   }
 }
 function automationRunnerDeps(pi, ctx, project, isCurrentSchedulerRun = () => true) {
