@@ -6,6 +6,7 @@ export type EnabledProject = {
   repoPath: string;
   githubRepo: string;
   enabledAt: number;
+  enableAttemptToken?: string;
   githubAliases?: string[];
   firstEnableAutoMerge?: boolean;
   firstStartPending?: boolean;
@@ -41,6 +42,7 @@ export function upsertEnabledProject(
   identity: ProjectIdentity,
   now = Date.now(),
   firstEnable: Pick<EnabledProject, "firstEnableAutoMerge"> = {},
+  enableAttemptToken?: string,
 ): EnablementState {
   if (!validIdentity(identity)) throw new Error("invalid project identity");
   const repoPath = normalizedPath(identity.repoPath);
@@ -58,6 +60,7 @@ export function upsertEnabledProject(
         repoPath,
         githubRepo: identity.githubRepo,
         enabledAt,
+        ...(enableAttemptToken ? { enableAttemptToken } : {}),
         ...(identity.githubAliases ? { githubAliases: identity.githubAliases } : {}),
         ...(previous ? {} : { firstStartPending: true, lastObservedAutoMerge: firstEnable.firstEnableAutoMerge }),
         enabled: true,
@@ -87,6 +90,18 @@ export function removeEnabledProjectGeneration(
 ): EnablementState {
   const enabled = findEnabledProject(state, identity);
   return enabled?.enabledAt === enabledAt ? removeEnabledProject(state, identity) : state || { projects: [] };
+}
+
+export function removeEnabledProjectAttempt(
+  state: EnablementState | null,
+  identity: ProjectIdentity,
+  enabledAt: number,
+  enableAttemptToken: string,
+): EnablementState {
+  const enabled = findEnabledProject(state, identity);
+  return enabled?.enabledAt === enabledAt && enabled.enableAttemptToken === enableAttemptToken
+    ? removeEnabledProject(state, identity)
+    : state || { projects: [] };
 }
 
 export function removeEnabledProject(state: EnablementState | null, identity: ProjectIdentity): EnablementState {

@@ -79,6 +79,7 @@ async function loadExtension(
     upstream?: string;
     noUpstream?: boolean;
     beforeGithubRepoCheck?: () => Promise<void>;
+    afterEnablementSaved?: () => Promise<void>;
   } = {},
 ): Promise<{ commands: Map<string, CommandHandler>; ghCommands: string[][]; messages: string[] }> {
   process.env.HOME = root;
@@ -130,6 +131,7 @@ async function loadExtension(
     on: () => undefined,
     sendMessage: (message: { content: string }) => messages.push(message.content),
     sendUserMessage: () => undefined,
+    testing: options.afterEnablementSaved ? { afterEnablementSaved: options.afterEnablementSaved } : undefined,
   });
   return { commands, ghCommands, messages };
 }
@@ -228,6 +230,34 @@ describe("enablement command integration", () => {
     withEnabledProjectLock({ repoPath, githubRepo: "owner/demo", stateDir, enabledAt }, () => { authorized = true; });
 
     expect(authorized).toBe(true);
+  });
+
+  it("does not let a failed enable revoke a later successful concurrent enable", async () => {
+    const { root, repoPath } = fixtureRepository();
+    writeConfig(root, repoPath);
+    let releaseFirstEnable!: () => void;
+    let firstEnableSaved!: () => void;
+    const firstSaved = new Promise<void>((resolve) => { firstEnableSaved = resolve; });
+    const holdFirst = new Promise<void>((resolve) => { releaseFirstEnable = resolve; });
+    let saveCount = 0;
+    const extension = await loadExtension(root, {
+      afterEnablementSaved: async () => {
+        saveCount += 1;
+        if (saveCount === 1) {
+          firstEnableSaved();
+          await holdFirst;
+        }
+      },
+    });
+    const firstEnable = invoke(extension.commands.get("deadloop-enable")!, repoPath);
+    await firstSaved;
+    await invoke(extension.commands.get("deadloop-enable")!, repoPath);
+    writeFileSync(path.join(root, ".pi", "agent", "deadloop", "projects.json"), "{");
+
+    releaseFirstEnable();
+    await firstEnable;
+
+    expect(JSON.parse(readFileSync(path.join(root, ".pi", "agent", "deadloop", "enabled-projects.json"), "utf8")).projects[0].enabled).not.toBe(false);
   });
 
   it("infers base branch and worktree root when a configured project omits both", async () => {

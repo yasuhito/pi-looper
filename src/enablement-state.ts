@@ -7,6 +7,7 @@ type EnablementIdentityValue = {
 
 type EnabledProjectValue = EnablementIdentityValue & {
   enabledAt: number;
+  enableAttemptToken?: string;
   githubAliases?: string[];
   firstEnableAutoMerge?: boolean;
   firstStartPending?: boolean;
@@ -39,6 +40,7 @@ function normalizeEnablementStateValue(value: unknown): EnablementStateValue | n
     if (!candidate || typeof candidate !== "object" || Array.isArray(candidate) || !validIdentity(candidate)) return null;
     const record = candidate as EnabledProjectValue;
     if (!Number.isFinite(record.enabledAt)) return null;
+    if (record.enableAttemptToken !== undefined && (typeof record.enableAttemptToken !== "string" || !record.enableAttemptToken)) return null;
     if (record.githubAliases !== undefined && (
       !Array.isArray(record.githubAliases)
       || record.githubAliases.length === 0
@@ -56,6 +58,7 @@ function normalizeEnablementStateValue(value: unknown): EnablementStateValue | n
       repoPath,
       githubRepo: record.githubRepo,
       enabledAt: Number(record.enabledAt),
+      ...(record.enableAttemptToken === undefined ? {} : { enableAttemptToken: record.enableAttemptToken }),
       ...(record.githubAliases === undefined ? {} : { githubAliases: [...new Set(record.githubAliases)] }),
       ...(record.firstEnableAutoMerge === undefined ? {} : { firstEnableAutoMerge: record.firstEnableAutoMerge }),
       ...(record.firstStartPending === undefined ? {} : { firstStartPending: record.firstStartPending }),

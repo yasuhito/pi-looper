@@ -1,4 +1,5 @@
 import childProcess from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -41,7 +42,7 @@ import {
   observeAutoMerge,
   removeEnabledProject,
   removeEnabledProjectAtPath,
-  removeEnabledProjectGeneration,
+  removeEnabledProjectAttempt,
   upsertEnabledProject,
 } from "../../src/enablement";
 
@@ -389,8 +390,8 @@ async function completeFirstSchedulerStart(project) {
   }));
 }
 
-async function disableEnablementGeneration(identity, enabledAt) {
-  await updateEnablementState((state) => removeEnabledProjectGeneration(state, identity, enabledAt));
+async function disableEnablementAttempt(identity, enabledAt, enableAttemptToken) {
+  await updateEnablementState((state) => removeEnabledProjectAttempt(state, identity, enabledAt, enableAttemptToken));
 }
 
 function isProjectEnabled(project) {
@@ -976,6 +977,7 @@ export default function (pi) {
       try {
         let identity;
         let enabledAt;
+        const enableAttemptToken = crypto.randomUUID();
         await withEnablementStateLock(async () => {
           identity = await detectProjectIdentity(pi, ctx.cwd);
           const state = loadEnablementState();
@@ -996,19 +998,20 @@ export default function (pi) {
             if (wasEnabled) saveEnablementState(removeEnabledProject(state, identity));
             throw error;
           }
-          const next = upsertEnabledProject(state, identity, Date.now(), firstEnable);
+          const next = upsertEnabledProject(state, identity, Date.now(), firstEnable, enableAttemptToken);
           enabledAt = findEnabledProject(next, identity)?.enabledAt;
           saveEnablementState(next);
         });
         let project;
         try {
+          await pi.testing?.afterEnablementSaved?.();
           const projects = loadProjects(ctx.cwd);
           project = await activeSchedulerProject(ctx.cwd, projects);
           if (!project) throw new Error("enabled repository configuration could not be resolved safely");
           startScheduler(ctx, project);
           await completeFirstSchedulerStart(project);
         } catch (error) {
-          await disableEnablementGeneration(identity, enabledAt);
+          await disableEnablementAttempt(identity, enabledAt, enableAttemptToken);
           throw error;
         }
         const owner = ownsLock ? "this session" : `another session (pid ${readLock(projectLockPath(project))?.pid || "unknown"})`;
