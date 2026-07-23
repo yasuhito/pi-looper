@@ -1,4 +1,4 @@
-![deadloop banner](docs/assets/deadloop-banner.png)
+![deadloop banner](docs/assets/deadloop-banner.webp)
 
 [English](README.md) | 日本語
 
