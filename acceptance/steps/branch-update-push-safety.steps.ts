@@ -28,6 +28,7 @@ type SafetyWorld = {
   commands?: string[][];
   branchUpdateInput?: { cleanWorktree: boolean; headMatchesExpected: boolean };
   branchUpdateResult?: Record<string, unknown>;
+  finalizeResult?: Record<string, unknown>;
   temporaryRoots?: string[];
   trustLaunchMarker?: string;
   trustRoot?: string;
@@ -36,7 +37,7 @@ type SafetyWorld = {
 function finalize(world: SafetyWorld): void {
   const commands: string[][] = [];
   world.commands = commands;
-  finalizeBranchUpdate(
+  world.finalizeResult = finalizeBranchUpdate(
     {
       repo: "/worktree",
       githubRepo: "owner/repo",
@@ -91,6 +92,32 @@ function runBranchUpdate(world: SafetyWorld): void {
   if (!world.branchUpdateInput) throw new Error("branch update precondition is missing");
   const root = temporaryRoot(world, "deadloop-branch-update-");
   const fixturePath = path.join(root, "fixture.json");
+  let selectedHead = head;
+  let openedWorktreePath: string | undefined;
+  let cleanWorktree = world.branchUpdateInput.cleanWorktree;
+  if (!cleanWorktree) {
+    openedWorktreePath = path.join(root, "opened-worktree");
+    fs.mkdirSync(openedWorktreePath);
+    for (const args of [
+      ["git", "init", "-q", openedWorktreePath],
+      ["git", "-C", openedWorktreePath, "config", "user.email", "acceptance@example.com"],
+      ["git", "-C", openedWorktreePath, "config", "user.name", "Acceptance"],
+    ]) {
+      const result = spawnSync(args[0], args.slice(1), { encoding: "utf8" });
+      if (result.status !== 0) throw new Error(result.stderr || result.stdout);
+    }
+    fs.writeFileSync(path.join(openedWorktreePath, "tracked.txt"), "clean\n");
+    for (const args of [
+      ["git", "-C", openedWorktreePath, "add", "tracked.txt"],
+      ["git", "-C", openedWorktreePath, "commit", "-qm", "fixture"],
+    ]) {
+      const result = spawnSync(args[0], args.slice(1), { encoding: "utf8" });
+      if (result.status !== 0) throw new Error(result.stderr || result.stdout);
+    }
+    selectedHead = spawnSync("git", ["-C", openedWorktreePath, "rev-parse", "HEAD"], { encoding: "utf8" }).stdout.trim();
+    fs.writeFileSync(path.join(openedWorktreePath, "tracked.txt"), "dirty\n");
+    cleanWorktree = true;
+  }
   fs.writeFileSync(
     fixturePath,
     JSON.stringify({
@@ -99,7 +126,7 @@ function runBranchUpdate(world: SafetyWorld): void {
           number: 31,
           title: "Conflicting PR",
           headRefName: branch,
-          headRefOid: head,
+          headRefOid: selectedHead,
           isCrossRepository: false,
           isDraft: false,
           labels: [{ name: "agent:review" }],
@@ -113,9 +140,11 @@ function runBranchUpdate(world: SafetyWorld): void {
       branchUpdate: {
         ahead: 1,
         behind: 1,
-        conflictFree: true,
+        conflictFree: false,
         ...world.branchUpdateInput,
+        cleanWorktree,
         baseOid: base,
+        openedWorktreePath,
       },
     }),
   );
@@ -147,6 +176,10 @@ When("deadloop が branch 更新を完了しようとする", function (this: Sa
 
 Then("branch への push は行われない", function (this: SafetyWorld) {
   assert.equal(pushed(this), false);
+});
+
+Then("完了結果は古い head として観測される", function (this: SafetyWorld) {
+  assert.equal(this.finalizeResult?.action, "stale_head");
 });
 
 Given("更新対象の作業場所に未コミットの変更がある", function (this: SafetyWorld) {

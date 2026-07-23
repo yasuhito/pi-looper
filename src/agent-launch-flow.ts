@@ -19,6 +19,7 @@ type AgentLaunchFlowInput = {
   uuid: string;
   promptFilePrefix: string;
   renderPrompt: (input: { promiseFile: string; worktreePath: string }) => string;
+  validateWorktree?: (worktreePath: string) => void;
 };
 
 type AgentLaunchFlowOps = {
@@ -67,6 +68,7 @@ function retireFinishedSameNameAgent(name: string, worktreePath: string, runner:
 function launchAgentFlow(input: AgentLaunchFlowInput, ops: AgentLaunchFlowOps): AgentLaunchFlowResult {
   const runner = ops.runner || createHerdrRunner();
   const { workspaceId, worktreePath } = prepareWorktree(input, runner);
+  input.validateWorktree?.(worktreePath);
   retireFinishedSameNameAgent(input.name, worktreePath, runner);
   const { tabId } = runner.createTab({ workspaceId, cwd: worktreePath, label: input.name });
 
