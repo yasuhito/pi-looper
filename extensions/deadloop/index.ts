@@ -1145,6 +1145,7 @@ export default function (pi) {
     if (typeof ctx.hasPendingMessages === "function" && ctx.hasPendingMessages()) return;
 
     running = true;
+    let completedSafely = false;
     try {
       const state = loadState();
       updateStatus(ctx, project, state);
@@ -1155,6 +1156,7 @@ export default function (pi) {
         state.automations[automationStateKey(project, automation)] = entry;
         if (deliverPendingDriverHandoff(entry, state, automation.name, deps)) {
           if (active === schedulerRun && ownsLock && !stopRequested) deps.saveState(state);
+          completedSafely = true;
           return;
         }
       }
@@ -1173,8 +1175,13 @@ export default function (pi) {
       }
 
       if (active === schedulerRun && ownsLock && !stopRequested) deps.saveState(state);
+      completedSafely = true;
     } finally {
-      running = false;
+      try {
+        if (completedSafely) await completeFirstSchedulerStart(project);
+      } finally {
+        running = false;
+      }
     }
   }
 
@@ -1308,7 +1315,6 @@ export default function (pi) {
           if (!project) throw new Error("enabled repository configuration could not be resolved safely");
           const schedulerStart = startScheduler(ctx, project);
           if (!schedulerStart.started) throw new Error(schedulerStart.reason);
-          await completeFirstSchedulerStart(project);
         } catch (error) {
           if (previousEnabledAt === undefined) {
             await disableEnablementAttempt(identity, enabledAt, enableAttemptToken);

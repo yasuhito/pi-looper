@@ -107,7 +107,7 @@ async function loadExtension(
     beforeLabelCreate?: (name: string) => Promise<void>;
     beforeDisableLock?: () => Promise<void>;
     afterEnablementSaved?: () => Promise<void>;
-    runAutomationScript?: () => Promise<{ code: number; stdout: string; stderr: string }>;
+    runAutomationScript?: (args: string[]) => Promise<{ code: number; stdout: string; stderr: string }>;
   } = {},
 ): Promise<{ commands: Map<string, CommandHandler>; events: Map<string, EventHandler>; ghCommands: string[][]; messages: string[] }> {
   process.env.HOME = root;
@@ -136,7 +136,7 @@ async function loadExtension(
           return { code: 1, stdout: "", stderr: String(error) };
         }
       }
-      if (command === "bash" && options.runAutomationScript) return await options.runAutomationScript();
+      if (command === "bash" && options.runAutomationScript) return await options.runAutomationScript(args);
       if (command === "gh") ghCommands.push(args);
       if (command === "gh" && args[0] === "auth") return { code: 0, stdout: "", stderr: "" };
       if (command === "gh" && args[0] === "repo") {
@@ -339,7 +339,9 @@ describe("enablement command integration", () => {
     const { root, repoPath } = fixtureRepository();
     writeConfig(root, repoPath, { autoMerge: true });
     const extension = await loadExtension(root);
+    vi.useFakeTimers();
     await invoke(extension.commands.get("deadloop-enable")!, repoPath);
+    await vi.advanceTimersByTimeAsync(3_000);
     writeConfig(root, repoPath, { autoMerge: true });
 
     await invoke(extension.commands.get("deadloop-enable")!, repoPath);
@@ -711,6 +713,37 @@ describe("enablement command integration", () => {
     expect(extension.messages.at(-1)).toContain("autoMerge is off");
   });
 
+  it("keeps auto-merge off through the first actual scheduler tick", async () => {
+    const { root, repoPath } = fixtureRepository();
+    writeConfig(root, repoPath, { autoMerge: true });
+    const configPath = path.join(root, ".pi", "agent", "deadloop", "projects.json");
+    const config = JSON.parse(readFileSync(configPath, "utf8"));
+    config.projects[0].automations = [{
+      name: "first tick",
+      schedule: "*/1 * * * *",
+      precheckFile: "issue-coordinator.precheck.sh",
+      promptFile: "issue-coordinator.md",
+    }];
+    writeFileSync(configPath, JSON.stringify(config));
+    let effectiveAutoMerge = "";
+    const extension = await loadExtension(root, {
+      runAutomationScript: async (args) => {
+        effectiveAutoMerge = /DEADLOOP_AUTO_MERGE='([^']+)'/.exec(args[1] || "")?.[1] || "";
+        return { code: 0, stdout: "", stderr: "" };
+      },
+    });
+    vi.useFakeTimers();
+
+    await invoke(extension.commands.get("deadloop-enable")!, repoPath);
+    await vi.advanceTimersByTimeAsync(3_000);
+
+    const enabled = JSON.parse(readFileSync(path.join(root, ".pi", "agent", "deadloop", "enabled-projects.json"), "utf8")).projects[0];
+    expect({ effectiveAutoMerge, firstStartPending: enabled.firstStartPending }).toEqual({
+      effectiveAutoMerge: "0",
+      firstStartPending: false,
+    });
+  });
+
   it("keeps auto-merge gated when configuration turns on during enablement preflight", async () => {
     const { root, repoPath } = fixtureRepository();
     writeConfig(root, repoPath, { autoMerge: false });
@@ -747,7 +780,9 @@ describe("enablement command integration", () => {
     const { root, repoPath } = fixtureRepository();
     writeConfig(root, repoPath, { autoMerge: true });
     const extension = await loadExtension(root);
+    vi.useFakeTimers();
     await invoke(extension.commands.get("deadloop-enable")!, repoPath);
+    await vi.advanceTimersByTimeAsync(3_000);
     writeConfig(root, repoPath, { autoMerge: true });
     await invoke(extension.commands.get("deadloop-enable")!, repoPath);
     await invoke(extension.commands.get("deadloop-disable")!, repoPath);
