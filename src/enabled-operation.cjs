@@ -2,7 +2,8 @@ const childProcess = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { normalizeEnablementStateValue } = require("./enablement-state.cjs");
+// @ts-expect-error Node loads this CommonJS-style TypeScript module with built-in type stripping.
+const { normalizeEnablementStateValue } = require("./enablement-state.ts");
 const { acquireLockSync, releaseOwned } = require("./enablement-lock.cjs");
 
 function githubRepoFromRemote(remote) {

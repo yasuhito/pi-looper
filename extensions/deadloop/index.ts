@@ -32,7 +32,6 @@ const {
 } = require("../../src/scheduler-lock.cjs");
 import { inferredProjectId, schedulerLockName } from "../../src/project-identity";
 import {
-  acknowledgeAutoMerge,
   findEnabledProject,
   normalizeEnablementState,
   observeAutoMerge,
@@ -889,11 +888,7 @@ export default function (pi) {
             throw error;
           }
           const enabled = findEnabledProject(state, identity);
-          if (!enabled) {
-            saveEnablementState(upsertEnabledProject(state, identity, Date.now(), firstEnable));
-          } else if (enabled.firstEnableAutoMerge === true && !enabled.autoMergeAcknowledged && configuredProject.autoMerge === true) {
-            saveEnablementState(acknowledgeAutoMerge(state, identity));
-          }
+          if (!enabled) saveEnablementState(upsertEnabledProject(state, identity, Date.now(), firstEnable));
         });
         let project;
         try {

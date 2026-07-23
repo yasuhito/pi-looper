@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -130,6 +130,14 @@ async function invoke(handler: CommandHandler, cwd: string, schedulerState: Pick
   await handler("", { cwd, mode: "interactive", ui: { notify: () => undefined, setStatus: () => undefined }, ...schedulerState });
 }
 
+async function waitForFile(filePath: string): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (existsSync(filePath)) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`timed out waiting for ${filePath}`);
+}
+
 afterEach(() => {
   vi.restoreAllMocks();
   vi.useRealTimers();
@@ -144,9 +152,8 @@ afterEach(() => {
 });
 
 describe("enablement command integration", () => {
-  it("records enablement after label preparation succeeds", async () => {
+  it("records enablement without deadloop.json or projects.json", async () => {
     const { root, repoPath } = fixtureRepository();
-    writeConfig(root, repoPath);
     const extension = await loadExtension(root);
 
     await invoke(extension.commands.get("deadloop-enable")!, repoPath);
@@ -154,7 +161,7 @@ describe("enablement command integration", () => {
     expect(extension.messages.at(-1)).toContain("deadloop enabled");
   });
 
-  it("accepts a preexisting true auto-merge setting on a later explicit enable", async () => {
+  it("keeps a preexisting true auto-merge setting off on repeated enable", async () => {
     const { root, repoPath } = fixtureRepository();
     writeConfig(root, repoPath, { autoMerge: true });
     const extension = await loadExtension(root);
@@ -162,7 +169,7 @@ describe("enablement command integration", () => {
 
     await invoke(extension.commands.get("deadloop-enable")!, repoPath);
 
-    expect(extension.messages.at(-1)).toContain("autoMerge is on");
+    expect(extension.messages.at(-1)).toContain("autoMerge is off");
   });
 
   it("forces a preexisting true auto-merge setting off on first enable", async () => {
@@ -283,6 +290,17 @@ describe("enablement command integration", () => {
     await invoke(extension.commands.get("deadloop-enable")!, repoPath);
 
     expect(existsSync(path.join(root, ".pi", "agent", "deadloop", "enabled-projects.json"))).toBe(false);
+  });
+
+  it("rejects enable from a linked worktree", async () => {
+    const { root, repoPath } = fixtureRepository();
+    const linkedPath = path.join(root, "linked");
+    git(repoPath, ["worktree", "add", "--quiet", "-b", "linked-enable", linkedPath]);
+    const extension = await loadExtension(root);
+
+    await invoke(extension.commands.get("deadloop-enable")!, linkedPath);
+
+    expect(extension.messages.at(-1)).toContain("linked worktrees cannot be enabled");
   });
 
   it("rejects disable from a linked worktree without removing primary enablement", async () => {
@@ -436,6 +454,54 @@ describe("enablement command integration", () => {
 
     const lockName = schedulerLockName({ id: "demo", repoPath, githubRepo: "owner/demo" });
     expect(existsSync(path.join(root, ".pi", "agent", "deadloop", lockName))).toBe(false);
+  });
+
+  it("keeps the state file readable during concurrent enable and disable commands", async () => {
+    const { root, repoPath } = fixtureRepository();
+    writeConfig(root, repoPath);
+    const stateDir = path.join(root, ".pi", "agent", "deadloop");
+    mkdirSync(stateDir, { recursive: true });
+    const statePath = path.join(stateDir, "enabled-projects.json");
+    writeFileSync(statePath, JSON.stringify({ projects: [{ repoPath, githubRepo: "owner/demo", enabledAt: 1 }] }));
+    let releasePreflight!: () => void;
+    let preflightStarted!: () => void;
+    const preflight = new Promise<void>((resolve) => { preflightStarted = resolve; });
+    const holdPreflight = new Promise<void>((resolve) => { releasePreflight = resolve; });
+    const extension = await loadExtension(root, { beforeGithubRepoCheck: async () => {
+      preflightStarted();
+      await holdPreflight;
+    } });
+    const readyPath = path.join(root, "observer-ready");
+    const stopPath = path.join(root, "observer-stop");
+    const reportPath = path.join(root, "observer-report.json");
+    const observerPath = path.join(root, "observe-state.cjs");
+    writeFileSync(observerPath, `const fs = require("node:fs");
+const [statePath, readyPath, stopPath, reportPath] = process.argv.slice(2);
+let reads = 0;
+const errors = [];
+fs.writeFileSync(readyPath, "ready");
+while (!fs.existsSync(stopPath)) {
+  try { JSON.parse(fs.readFileSync(statePath, "utf8")); reads += 1; }
+  catch (error) { errors.push(error.code || error.name); }
+}
+fs.writeFileSync(reportPath, JSON.stringify({ reads, errors }));
+`);
+    const observer = spawn(process.execPath, [observerPath, statePath, readyPath, stopPath, reportPath], { stdio: "ignore" });
+    const observerExit = new Promise<void>((resolve, reject) => {
+      observer.once("exit", (code) => code === 0 ? resolve() : reject(new Error(`observer exited with ${code}`)));
+      observer.once("error", reject);
+    });
+    await waitForFile(readyPath);
+    const enabling = invoke(extension.commands.get("deadloop-enable")!, repoPath);
+    await preflight;
+    const disabling = invoke(extension.commands.get("deadloop-disable")!, repoPath);
+    releasePreflight();
+    await Promise.all([enabling, disabling]);
+    writeFileSync(stopPath, "stop");
+    await observerExit;
+    const report = JSON.parse(readFileSync(reportPath, "utf8"));
+
+    expect({ readAtLeastOnce: report.reads > 0, errors: report.errors }).toEqual({ readAtLeastOnce: true, errors: [] });
   });
 
   it("keeps a later concurrent disable from being undone by an earlier enable", async () => {

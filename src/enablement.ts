@@ -1,6 +1,6 @@
 import path from "node:path";
 
-const { normalizeEnablementStateValue } = require("./enablement-state.cjs");
+const { normalizeEnablementStateValue, validIdentity } = require("./enablement-state.ts");
 
 export type EnabledProject = {
   repoPath: string;
@@ -20,12 +20,8 @@ function normalizedPath(value: string): string {
   return path.resolve(value);
 }
 
-function validIdentity(value: Partial<ProjectIdentity>): value is ProjectIdentity {
-  return Boolean(value.repoPath && value.githubRepo && /^[^/\s]+\/[^/\s]+$/.test(value.githubRepo));
-}
-
 export function normalizeEnablementState(value: unknown): EnablementState | null {
-  return normalizeEnablementStateValue(value) as EnablementState | null;
+  return normalizeEnablementStateValue(value);
 }
 
 export function findEnabledProject(state: EnablementState | null, identity: ProjectIdentity): EnabledProject | null {
@@ -61,18 +57,6 @@ export function upsertEnabledProject(
         enabled: true,
       },
     ],
-  };
-}
-
-export function acknowledgeAutoMerge(state: EnablementState, identity: ProjectIdentity): EnablementState {
-  if (!validIdentity(identity)) throw new Error("invalid project identity");
-  const repoPath = normalizedPath(identity.repoPath);
-  return {
-    projects: state.projects.map((project) =>
-      project.repoPath === repoPath && project.githubRepo === identity.githubRepo
-        ? { ...project, autoMergeAcknowledged: true, lastObservedAutoMerge: true }
-        : project,
-    ),
   };
 }
 
