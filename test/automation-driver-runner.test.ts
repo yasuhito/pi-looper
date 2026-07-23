@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { runScheduledAutomation } from "../src/automation-runner";
+import { deliverPendingDriverHandoff, runScheduledAutomation } from "../src/automation-runner";
 import { normalizeProject, type AutomationFileResolution } from "../src/core";
 
 function foundFile(requested: string | undefined): AutomationFileResolution {
@@ -176,6 +176,17 @@ describe("deterministic automation driver runner", () => {
     expect(result.sent).toEqual([]);
   });
 
+  it("persists the complete driver handoff when enablement is removed during driver execution", async () => {
+    let enabled = true;
+    const payload = { action: "needs_llm", prompt: "driver prompt", launch: { promiseFile: "/runs/1/promise.json" } };
+    const result = await exerciseDriver(JSON.stringify(payload), {
+      isEnabled: () => enabled,
+      runDriver: () => { enabled = false; },
+    });
+
+    expect(result.entry.pendingDriverHandoff).toEqual(payload);
+  });
+
   it("records disabled-before-driver-prompt when enablement is removed during driver execution", async () => {
     let enabled = true;
     const result = await exerciseDriver(JSON.stringify({ action: "needs_llm", prompt: "driver prompt" }), {
@@ -184,6 +195,23 @@ describe("deterministic automation driver runner", () => {
     });
 
     expect(result.entry.lastResult).toBe("disabled_before_driver_prompt");
+  });
+
+  it("delivers and clears a persisted driver handoff after re-enable", () => {
+    const entry: Record<string, unknown> = {
+      pendingDriverHandoff: { action: "needs_llm", prompt: "driver prompt", launch: { promiseFile: "/runs/1/promise.json" } },
+    };
+    const state = { automations: { auto: entry } };
+    const sent: string[] = [];
+
+    deliverPendingDriverHandoff(entry, state, "auto", {
+      isEnabled: () => true,
+      now: () => 456,
+      saveState: () => undefined,
+      sendUserMessage: (prompt) => sent.push(prompt),
+    });
+
+    expect({ sent, pending: entry.pendingDriverHandoff }).toEqual({ sent: ["driver prompt"], pending: undefined });
   });
 
   it("does not dispatch a driver prompt when disable wins the enqueue lock", async () => {

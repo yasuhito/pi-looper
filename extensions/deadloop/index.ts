@@ -23,7 +23,7 @@ import {
 import { buildDoctorSnapshot, formatDoctorReport } from "../../src/doctor";
 import { buildStatusSnapshot, formatStatusReport, type RepositoryEnablement } from "../../src/status";
 import { readClaudeConfig } from "../../src/agent-trust.cjs";
-import { runScheduledAutomation } from "../../src/automation-runner";
+import { deliverPendingDriverHandoff, runScheduledAutomation } from "../../src/automation-runner";
 const { createAsyncHerdrRunner } = require("../../src/herdr-runner.ts");
 const { acquireLock, releaseOwned } = require("../../src/enablement-lock.cjs");
 const {
@@ -811,8 +811,8 @@ async function prepareGithub(pi, githubRepo) {
     if (!existing.has(name)) await commandExec(pi, "gh", ["label", "create", name, "-R", githubRepo, "--color", color]);
   }
 }
-async function runAutomation(pi, ctx, project, automation, dueSlot, state) {
-  await runScheduledAutomation(project, automation, dueSlot, state, {
+function automationRunnerDeps(pi, ctx, project) {
+  return {
     isEnabled: () => isProjectEnabled(project),
     isIdle: typeof ctx.isIdle === "function" ? () => ctx.isIdle() : undefined,
     notify: (message, level) => {
@@ -841,7 +841,11 @@ async function runAutomation(pi, ctx, project, automation, dueSlot, state) {
       }
     },
     setStatus: (text) => setLooperStatus(ctx, text),
-  });
+  };
+}
+
+async function runAutomation(pi, ctx, project, automation, dueSlot, state) {
+  await runScheduledAutomation(project, automation, dueSlot, state, automationRunnerDeps(pi, ctx, project));
 }
 
 function registerReportCommand(pi, name, description, customType, buildReport) {
@@ -917,6 +921,16 @@ export default function (pi) {
 
     const state = loadState();
     updateStatus(ctx, project, state);
+
+    const deps = automationRunnerDeps(pi, ctx, project);
+    for (const automation of project.automations) {
+      const entry = state.automations[automationStateKey(project, automation)] || {};
+      state.automations[automationStateKey(project, automation)] = entry;
+      if (deliverPendingDriverHandoff(entry, state, automation.name, deps)) {
+        saveState(state);
+        return;
+      }
+    }
 
     const now = Date.now();
     for (const automation of project.automations) {

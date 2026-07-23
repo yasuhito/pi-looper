@@ -47,7 +47,61 @@ type DriverPayload = {
   summary?: unknown;
   prompt?: unknown;
   error?: unknown;
+  [key: string]: unknown;
 };
+
+export function deliverPendingDriverHandoff(
+  entry: Record<string, unknown>,
+  state: AutomationState,
+  automationName: string,
+  deps: Pick<
+    AutomationRunnerDeps,
+    "isEnabled" | "notify" | "now" | "saveState" | "sendUserMessage" | "sendUserMessageIfEnabled"
+  >,
+): boolean {
+  const handoff = entry.pendingDriverHandoff;
+  if (!handoff || typeof handoff !== "object" || Array.isArray(handoff)) return false;
+  const pendingPrompt = (handoff as DriverPayload).prompt;
+  const prompt = typeof pendingPrompt === "string" ? pendingPrompt : "";
+  if (!prompt) {
+    delete entry.pendingDriverHandoff;
+    recordAutomationResult(entry, "driver_invalid_result");
+    entry.lastError = "pending needs_llm driver result did not include prompt";
+    entry.updatedAt = deps.now();
+    deps.saveState(state);
+    return true;
+  }
+  if (deps.isEnabled && !deps.isEnabled()) {
+    recordAutomationResult(entry, "disabled_before_driver_prompt");
+    entry.updatedAt = deps.now();
+    deps.saveState(state);
+    return true;
+  }
+  try {
+    const queued = deps.sendUserMessageIfEnabled
+      ? deps.sendUserMessageIfEnabled(prompt)
+      : (deps.sendUserMessage(prompt), true);
+    if (!queued) {
+      recordAutomationResult(entry, "disabled_before_driver_prompt");
+      entry.updatedAt = deps.now();
+      deps.saveState(state);
+      return true;
+    }
+    delete entry.pendingDriverHandoff;
+    recordAutomationResult(entry, "driver_needs_llm_queued");
+    entry.lastQueuedAt = deps.now();
+    entry.updatedAt = deps.now();
+    deps.saveState(state);
+    deps.notify?.(`deadloop queued driver prompt: ${automationName}`, "info");
+  } catch (error) {
+    recordAutomationResult(entry, "send_error");
+    entry.lastError = error instanceof Error ? error.message : String(error);
+    entry.updatedAt = deps.now();
+    deps.saveState(state);
+    deps.notify?.(`deadloop send failed: ${automationName}`, "error");
+  }
+  return true;
+}
 
 function isAutomationFailureResult(result: string): boolean {
   return (
@@ -183,34 +237,11 @@ async function runConfiguredDriver(
       deps.notify?.(`deadloop driver returned invalid result: ${automation.name}`, "warning");
       return true;
     }
-    if (deps.isEnabled && !deps.isEnabled()) {
-      recordAutomationResult(entry, "disabled_before_driver_prompt");
-      entry.updatedAt = deps.now();
-      deps.saveState(state);
-      return true;
-    }
-    try {
-      const queued = deps.sendUserMessageIfEnabled
-        ? deps.sendUserMessageIfEnabled(prompt)
-        : (deps.sendUserMessage(prompt), true);
-      if (!queued) {
-        recordAutomationResult(entry, "disabled_before_driver_prompt");
-        entry.updatedAt = deps.now();
-        deps.saveState(state);
-        return true;
-      }
-      recordAutomationResult(entry, "driver_needs_llm_queued");
-      entry.lastQueuedAt = deps.now();
-      entry.updatedAt = deps.now();
-      deps.saveState(state);
-      deps.notify?.(`deadloop queued driver prompt: ${automation.name}`, "info");
-    } catch (error) {
-      recordAutomationResult(entry, "send_error");
-      entry.lastError = error instanceof Error ? error.message : String(error);
-      entry.updatedAt = deps.now();
-      deps.saveState(state);
-      deps.notify?.(`deadloop send failed: ${automation.name}`, "error");
-    }
+    entry.pendingDriverHandoff = payload;
+    recordAutomationResult(entry, "driver_handoff_pending");
+    entry.updatedAt = deps.now();
+    deps.saveState(state);
+    deliverPendingDriverHandoff(entry, state, automation.name, deps);
     return true;
   }
 
