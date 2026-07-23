@@ -411,12 +411,16 @@ function directAssertions(
 
 type CucumberStepKind = "Given" | "When" | "Then" | "defineStep";
 
-function cucumberStepBindings(sourceFile: ts.SourceFile): {
+type CucumberStepBindings = {
   functions: Map<string, CucumberStepKind>;
   namespaces: Set<string>;
-} {
+  indirectFunctions: Map<string, CucumberStepKind>;
+};
+
+function cucumberStepBindings(sourceFile: ts.SourceFile): CucumberStepBindings {
   const functions = new Map<string, CucumberStepKind>();
   const namespaces = new Set<string>();
+  const indirectFunctions = new Map<string, CucumberStepKind>();
   const add = (local: string, imported: string): void => {
     if (imported === "Given" || imported === "When" || imported === "Then" || imported === "defineStep") {
       functions.set(local, imported);
@@ -472,6 +476,18 @@ function cucumberStepBindings(sourceFile: ts.SourceFile): {
       }
       if (!ts.isIdentifier(alias.name)) continue;
       const local = alias.name.text;
+      const indirectKind = indirectCucumberStepKindForExpression(initializer, {
+        functions,
+        namespaces,
+        indirectFunctions,
+      });
+      if (indirectKind) {
+        if (!indirectFunctions.has(local)) {
+          indirectFunctions.set(local, indirectKind);
+          changed = true;
+        }
+        continue;
+      }
       if (ts.isIdentifier(initializer)) {
         const kind = functions.get(initializer.text);
         if (kind && !functions.has(local)) {
@@ -514,13 +530,10 @@ function cucumberStepBindings(sourceFile: ts.SourceFile): {
       if (functions.has(local)) changed = true;
     }
   }
-  return { functions, namespaces };
+  return { functions, namespaces, indirectFunctions };
 }
 
-function cucumberStepKind(
-  expression: ts.Expression,
-  bindings: ReturnType<typeof cucumberStepBindings>,
-): CucumberStepKind | undefined {
+function cucumberStepKind(expression: ts.Expression, bindings: CucumberStepBindings): CucumberStepKind | undefined {
   const normalized = unparenthesized(expression);
   if (ts.isIdentifier(normalized)) return bindings.functions.get(normalized.text);
   if (ts.isPropertyAccessExpression(normalized)) {
@@ -649,10 +662,29 @@ function sourceProgram(file: SourceFile): { sourceFile: ts.SourceFile; checker: 
   return { sourceFile: program.getSourceFile(file.path) ?? sourceFile, checker: program.getTypeChecker() };
 }
 
-function indirectCucumberStepKind(
-  node: ts.CallExpression,
-  bindings: ReturnType<typeof cucumberStepBindings>,
+function indirectCucumberStepKindForExpression(
+  expression: ts.Expression,
+  bindings: CucumberStepBindings,
 ): CucumberStepKind | undefined {
+  const normalized = unparenthesized(expression);
+  if (ts.isIdentifier(normalized)) return bindings.indirectFunctions.get(normalized.text);
+  if (ts.isPropertyAccessExpression(normalized)) {
+    if (normalized.name.text !== "call" && normalized.name.text !== "apply") return undefined;
+    return cucumberStepKind(normalized.expression, bindings);
+  }
+  if (
+    ts.isCallExpression(normalized) &&
+    ts.isPropertyAccessExpression(normalized.expression) &&
+    normalized.expression.name.text === "bind"
+  ) {
+    return indirectCucumberStepKindForExpression(normalized.expression.expression, bindings);
+  }
+  return undefined;
+}
+
+function indirectCucumberStepKind(node: ts.CallExpression, bindings: CucumberStepBindings): CucumberStepKind | undefined {
+  const fromCallee = indirectCucumberStepKindForExpression(node.expression, bindings);
+  if (fromCallee) return fromCallee;
   const expression = unparenthesized(node.expression);
   if (
     !ts.isPropertyAccessExpression(expression) ||

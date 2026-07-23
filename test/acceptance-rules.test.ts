@@ -326,6 +326,37 @@ Reflect.apply(Then, undefined, ["検証は安全のため拒否される", () =>
     );
   });
 
+  it("rejects a Cucumber Then registration invoked with Function.prototype.call", () => {
+    const source = `
+import { Then } from "@cucumber/cucumber";
+Then.call(undefined, "検証は安全のため拒否される", () => {});
+`;
+    expect(checkAcceptanceRules(sources({ stepDefinitions: [{ path: "bad.steps.ts", source }] }))).toContain(
+      "bad.steps.ts:3: indirect Cucumber Then registration is not allowed",
+    );
+  });
+
+  it("rejects a Cucumber Then registration invoked with Function.prototype.apply", () => {
+    const source = `
+import { Then } from "@cucumber/cucumber";
+Then.apply(undefined, ["検証は安全のため拒否される", () => {}]);
+`;
+    expect(checkAcceptanceRules(sources({ stepDefinitions: [{ path: "bad.steps.ts", source }] }))).toContain(
+      "bad.steps.ts:3: indirect Cucumber Then registration is not allowed",
+    );
+  });
+
+  it("rejects a bound Cucumber Then.call registration", () => {
+    const source = `
+import { Then } from "@cucumber/cucumber";
+const outcome = Then.call.bind(Then, undefined);
+outcome("検証は安全のため拒否される", () => {});
+`;
+    expect(checkAcceptanceRules(sources({ stepDefinitions: [{ path: "bad.steps.ts", source }] }))).toContain(
+      "bad.steps.ts:4: indirect Cucumber Then registration is not allowed",
+    );
+  });
+
   it("counts a direct-require assertion in a Then registration", () => {
     const source = validSteps.replace(
       "assert.equal(this.code, 1);",
