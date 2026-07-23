@@ -236,6 +236,27 @@ describe("enablement command integration", () => {
     });
   });
 
+  it("preserves an existing enablement and scheduler owner when a repeated enable is suppressed", async () => {
+    const { root, repoPath } = fixtureRepository();
+    writeConfig(root, repoPath);
+    const extension = await loadExtension(root);
+    await invoke(extension.commands.get("deadloop-enable")!, repoPath);
+    const statePath = path.join(root, ".pi", "agent", "deadloop", "enabled-projects.json");
+    const lockPath = path.join(root, ".pi", "agent", "deadloop", schedulerLockName({ githubRepositoryId: "R_demo" }));
+    const originalState = JSON.parse(readFileSync(statePath, "utf8"));
+    const originalOwner = readFileSync(lockPath, "utf8");
+    process.env.DEADLOOP_AUTOMATIONS = "off";
+
+    await invoke(extension.commands.get("deadloop-enable")!, repoPath);
+
+    const retainedState = JSON.parse(readFileSync(statePath, "utf8"));
+    expect({ enabled: retainedState.projects[0].enabled, enabledAt: retainedState.projects[0].enabledAt, owner: readFileSync(lockPath, "utf8") }).toEqual({
+      enabled: true,
+      enabledAt: originalState.projects[0].enabledAt,
+      owner: originalOwner,
+    });
+  });
+
   it.each(["deadloop-status", "deadloop-doctor"])("does not recommend enablement outside Git for %s", async (command) => {
     const { root } = fixtureRepository();
     const extension = await loadExtension(root);

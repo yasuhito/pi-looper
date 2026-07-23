@@ -1208,7 +1208,9 @@ export default function (pi) {
           if (!schedulerStart.started) throw new Error(schedulerStart.reason);
           await completeFirstSchedulerStart(project);
         } catch (error) {
-          await disableEnablementAttempt(identity, enabledAt, enableAttemptToken);
+          if (previousEnabledAt === undefined) {
+            await disableEnablementAttempt(identity, enabledAt, enableAttemptToken);
+          }
           throw error;
         }
         const owner = ownsLock ? "this session" : `another session (pid ${readLock(projectLockPath(project))?.pid || "unknown"})`;

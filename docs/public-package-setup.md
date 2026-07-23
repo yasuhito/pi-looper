@@ -58,7 +58,7 @@ Key fields:
 
 - `repoPath` — absolute path to the target repository checkout. `/deadloop-enable` infers it from the current primary checkout; set it in `projects.json` only as a local override.
 - `githubRepo` — GitHub repository in `owner/name` form. `/deadloop-enable` infers it from the canonical `origin` fetch and push URLs; set it in `projects.json` only as a local override.
-- `baseBranch` — branch or remote ref used as the worktree base, usually the current branch upstream or `origin/main` when no upstream exists. `/deadloop-enable` infers it; set it in `projects.json` only as a local override.
+- `baseBranch` — branch or remote ref used as the worktree base, usually the current branch upstream or the verified GitHub default branch when no upstream exists. `/deadloop-enable` infers it; set it in `projects.json` only as a local override.
 - `worktreeRoot` — directory where the Herdr runner may create worker worktrees. `/deadloop-enable` defaults it to `~/.herdr/worktrees/<sanitized-checkout-name>-<12-character-identity-hash>/`; the hash is derived from the canonical checkout path and GitHub repository identity. Set it in `projects.json` only to use another local path.
 - `checkCommand` — optional verification command workers and reviewers must pass before handoff. Omit this for the standard convention: run `git diff --check`, then `npm run check` when it exists, otherwise the existing `test`, `lint`, and `typecheck` package scripts.
 - `autoMerge` — keep `false` until the repository has proven safeguards. Only `true` allows the PR reviewer automation to squash merge and delete the head branch after its gates pass.
