@@ -301,7 +301,19 @@ function dispatch(args: JsonObject): DriverResult {
     });
   }
   if (selection.action !== "launch_repair") {
-    const comment = applyHumanBlock(prNumber, env, "the same review findings remained after their bounded repair attempt", promise.summary);
+    let comment = "Review result comment already exists.";
+    if (!reviewCommentExists(pr.comments || [], expectedHead, selection.reviewFingerprint, outcome)) {
+      comment = renderChangesRequestedComment({
+        ...commentInput,
+        reviewFingerprint: selection.reviewFingerprint,
+        repairUnavailable: true,
+      });
+      github.commentPr(env.githubRepo, prNumber, comment);
+    }
+    const labelNames = (pr.labels || []).map((label: JsonObject) => String(label.name || label));
+    if (labelNames.includes(env.reviewingLabel) || !labelNames.includes(env.blockedLabel)) {
+      github.movePrLabels(env.githubRepo, prNumber, { remove: env.reviewingLabel, add: env.blockedLabel });
+    }
     return driverResult("done", `PR #${prNumber} repeated the same findings; marked blocked`, {
       driverAction: "review_repair_repeated",
       selection,

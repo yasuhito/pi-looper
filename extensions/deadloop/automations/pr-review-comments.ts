@@ -5,7 +5,7 @@ type JsonObject = Record<string, any>;
 const REVIEW_RESULT_RE = /<!--\s*deadloop:review-result\s+head=([0-9a-f]+)\s+review=([0-9a-f]+)\s+outcome=(approved|changes_requested|human_required)\s*-->/gi;
 const REPAIR_RESULT_RE = /<!--\s*deadloop:review-repair-result\s+key=([0-9a-f]+)\s+head=([0-9a-f]+)\s*-->/gi;
 
-const INTERNAL_DETAIL_RE = /(?:^|[\s`'"(])(?:\/(?:home|tmp|Users|private|var|root)\/|[A-Za-z]:\\)|(?:\.pi|\.deadloop)[\\/]|(?:worker|review-repair)-prompt(?:\.md)?|promise\.json|[\\/]prompts?[\\/]|review-repair worker|deterministic dispatcher/i;
+const INTERNAL_DETAIL_RE = /(?:^|[\s`'"(])(?:\/(?!\/)[^\s`'")]+|[A-Za-z]:\\)|(?:\.pi|\.deadloop)[\\/]|(?:worker|review-repair)-prompt(?:\.md)?|promise\.json|[\\/]prompts?[\\/]|review-repair worker|deterministic dispatcher/i;
 
 function publicText(value: unknown, fallback: string): string {
   const text = String(value || "").trim();
@@ -35,9 +35,11 @@ function renderChangesRequestedComment(input: JsonObject): string {
     return `### ${publicText(finding.title, "Review finding")} — ${finding.severity || "unspecified"}\n- File: ${code(location)}\n- Reason: ${publicText(finding.body, "The detailed evidence contained internal runtime information and was omitted.")}`;
   });
   const marker = renderRepairMarker(input.headOid, input.reviewFingerprint);
-  const nextStep = input.repairAlreadyStarted
-    ? "This review result already used its one bounded automatic repair attempt. The repair will not be launched again."
-    : "Exactly one bounded automatic repair will now start and will change only the findings listed above. The updated head will be reviewed again after a successful push.";
+  const nextStep = input.repairUnavailable
+    ? "The same findings remained after their one bounded automatic repair attempt. Automatic repair will not run again; inspect the current head, correct the branch without rewriting history, push a new commit, then remove `agent:blocked`."
+    : input.repairAlreadyStarted
+      ? "This review result already used its one bounded automatic repair attempt. The repair will not be launched again."
+      : "Exactly one bounded automatic repair will now start and will change only the findings listed above. The updated head will be reviewed again after a successful push.";
   return `## Review result: changes required
 
 - Reviewed commit: ${code(input.headOid)}
@@ -48,8 +50,7 @@ ${findings.join("\n\n")}
 ## Next step
 ${nextStep}
 
-${reviewMarker({ ...input, outcome: "changes_requested" })}
-${marker}`;
+${reviewMarker({ ...input, outcome: "changes_requested" })}${input.repairUnavailable ? "" : `\n${marker}`}`;
 }
 
 function renderApprovedReviewComment(input: JsonObject): string {

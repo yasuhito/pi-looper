@@ -83,6 +83,22 @@ describe("PR review public comments", () => {
     ).not.toContain("/home/user");
   });
 
+  it("redacts local paths outside common home directories", () => {
+    expect(
+      renderApprovedReviewComment({
+        headOid: "a".repeat(40),
+        summary: "Inspect /workspace/project/runtime.log",
+        reviewFingerprint: "1".repeat(20),
+      }),
+    ).not.toContain("/workspace");
+  });
+
+  it("renders repeated findings without recording a second repair attempt", () => {
+    expect(renderChangesRequestedComment({ ...fixture("changes-requested.json"), repairUnavailable: true })).not.toContain(
+      "deadloop:review-repair-attempt",
+    );
+  });
+
   it("requires one structured repair for every original finding", () => {
     expect(sameFindingTitles([{ title: "First" }], ["First", "Second"])).toBe(false);
   });
