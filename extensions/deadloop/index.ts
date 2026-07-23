@@ -355,14 +355,43 @@ function saveEnablementState(state) {
 
 const DISABLE_GENERATION_PATH = path.join(STATE_DIR, "disable-generation.json");
 
-function loadDisableGeneration() {
-  const value = readJsonFile(DISABLE_GENERATION_PATH, { generation: 0 });
-  return Number.isSafeInteger(value?.generation) && value.generation >= 0 ? value.generation : 0;
+function loadDisableGenerations() {
+  try {
+    const value = JSON.parse(fs.readFileSync(DISABLE_GENERATION_PATH, "utf8"));
+    const generation = value?.generation;
+    const generations = value?.generations ?? {};
+    if (
+      !value ||
+      typeof value !== "object" ||
+      Array.isArray(value) ||
+      !Number.isSafeInteger(generation) ||
+      generation < 0 ||
+      !generations ||
+      typeof generations !== "object" ||
+      Array.isArray(generations) ||
+      Object.values(generations).some((entry) => typeof entry !== "number" || !Number.isSafeInteger(entry) || entry < 0)
+    ) {
+      throw new Error("schema is invalid");
+    }
+    return { generation, generations };
+  } catch (error) {
+    if (error?.code === "ENOENT") return { generation: 0, generations: {} };
+    throw new Error(`disable generation state is invalid at ${DISABLE_GENERATION_PATH}: ${error?.message || error}. Inspect and move the file aside, then retry the command to recover.`);
+  }
 }
 
-function advanceDisableGeneration() {
-  const generation = loadDisableGeneration() + 1;
-  writeJsonFile(DISABLE_GENERATION_PATH, { generation });
+function disableGenerationForRepo(state, repoPath) {
+  return state.generations[path.resolve(repoPath)] ?? state.generation;
+}
+
+function advanceDisableGeneration(repoPath) {
+  const state = loadDisableGenerations();
+  const resolvedRepoPath = path.resolve(repoPath);
+  const generation = disableGenerationForRepo(state, resolvedRepoPath) + 1;
+  writeJsonFile(DISABLE_GENERATION_PATH, {
+    generation: state.generation,
+    generations: { ...state.generations, [resolvedRepoPath]: generation },
+  });
   return generation;
 }
 
@@ -953,7 +982,10 @@ async function prepareGithub(pi, identity, repoPath, enableAttemptToken, disable
       throw new Error((lookup.stderr || lookup.stdout || `label lookup failed for ${name}`).trim());
     }
     await withEnablementStateLock(async () => {
-      if (!ownsEnableAttempt(repoPath, enableAttemptToken) || loadDisableGeneration() !== disableGeneration) {
+      if (
+        !ownsEnableAttempt(repoPath, enableAttemptToken) ||
+        disableGenerationForRepo(loadDisableGenerations(), repoPath) !== disableGeneration
+      ) {
         throw new Error("enablement was revoked while preflight was running");
       }
       const lockedLookup = await pi.exec("gh", ["api", "--silent", `repos/${identity.githubRepo}/labels/${encodeURIComponent(name)}`], { timeout: 15_000 });
@@ -1239,10 +1271,11 @@ export default function (pi) {
       const enableAttemptToken = crypto.randomUUID();
       try {
         let enabledAt;
-        const disableGeneration = await withEnablementStateLock(async () => loadDisableGeneration());
+        const disableGenerations = await withEnablementStateLock(async () => loadDisableGenerations());
         primaryRepoPath = await detectPrimaryCheckout(pi, ctx.cwd);
+        const disableGeneration = disableGenerationForRepo(disableGenerations, primaryRepoPath);
         await withEnablementStateLock(async () => {
-          if (loadDisableGeneration() !== disableGeneration) {
+          if (disableGenerationForRepo(loadDisableGenerations(), primaryRepoPath) !== disableGeneration) {
             throw new Error("enablement was revoked while checkout detection was running");
           }
           writeEnableAttempt(primaryRepoPath, enableAttemptToken);
@@ -1252,7 +1285,10 @@ export default function (pi) {
         resolveEnableProject(ctx.cwd, identity);
         await prepareGithub(pi, identity, primaryRepoPath, enableAttemptToken, disableGeneration);
         await withEnablementStateLock(async () => {
-          if (!ownsEnableAttempt(primaryRepoPath, enableAttemptToken) || loadDisableGeneration() !== disableGeneration) {
+          if (
+            !ownsEnableAttempt(primaryRepoPath, enableAttemptToken) ||
+            disableGenerationForRepo(loadDisableGenerations(), primaryRepoPath) !== disableGeneration
+          ) {
             throw new Error("enablement was revoked while preflight was running");
           }
           await revalidateLocalProjectIdentity(pi, identity);
@@ -1308,7 +1344,7 @@ export default function (pi) {
           if (attempt?.repoPath === path.resolve(repoPath) && attempt?.token) {
             writeEnableAttempt(repoPath, attempt.token, true);
           }
-          advanceDisableGeneration();
+          advanceDisableGeneration(repoPath);
           const state = loadEnablementState();
           const enabled = state.projects.find((project) => project.repoPath === path.resolve(repoPath) && project.enabled !== false);
           saveEnablementState(removeEnabledProjectAtPath(state, repoPath));

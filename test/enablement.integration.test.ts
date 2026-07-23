@@ -360,6 +360,59 @@ describe("enablement command integration", () => {
     expect(authorized).toBe(true);
   });
 
+  it.each([
+    ["deadloop-enable", "malformed"],
+    ["deadloop-enable", "unreadable"],
+    ["deadloop-disable", "malformed"],
+    ["deadloop-disable", "unreadable"],
+  ] as const)("fails closed when %s reads %s disable generation state", async (command, stateKind) => {
+    const { root, repoPath } = fixtureRepository();
+    writeConfig(root, repoPath);
+    const generationPath = path.join(root, ".pi", "agent", "deadloop", "disable-generation.json");
+    if (stateKind === "malformed") writeFileSync(generationPath, "{");
+    else mkdirSync(generationPath);
+    const extension = await loadExtension(root);
+
+    await invoke(extension.commands.get(command)!, repoPath);
+
+    const message = extension.messages.at(-1) || "";
+    expect(message.includes("disable generation state is invalid") && message.includes("move the file aside")).toBe(true);
+  });
+
+  it("disabling one repository does not revoke another repository's enablement", async () => {
+    const { root, repoPath } = fixtureRepository();
+    const otherRepoPath = path.join(root, "other-primary");
+    mkdirSync(otherRepoPath);
+    git(otherRepoPath, ["init", "--quiet"]);
+    git(otherRepoPath, ["config", "user.email", "test@example.com"]);
+    git(otherRepoPath, ["config", "user.name", "Test"]);
+    writeFileSync(path.join(otherRepoPath, "README.md"), "other fixture\n");
+    git(otherRepoPath, ["add", "README.md"]);
+    git(otherRepoPath, ["commit", "--quiet", "-m", "initial"]);
+    git(otherRepoPath, ["remote", "add", "origin", "https://github.com/owner/demo.git"]);
+    let releasePreflight!: () => void;
+    let preflightStarted!: () => void;
+    const started = new Promise<void>((resolve) => { preflightStarted = resolve; });
+    const stalled = new Promise<void>((resolve) => { releasePreflight = resolve; });
+    let firstRepoCheck = true;
+    const extension = await loadExtension(root, {
+      beforeGithubRepoCheck: async () => {
+        if (!firstRepoCheck) return;
+        firstRepoCheck = false;
+        preflightStarted();
+        await stalled;
+      },
+    });
+
+    const enablingOther = invoke(extension.commands.get("deadloop-enable")!, otherRepoPath);
+    await started;
+    await invoke(extension.commands.get("deadloop-disable")!, repoPath);
+    releasePreflight();
+    await enablingOther;
+
+    expect(extension.messages.at(-1)).toContain("deadloop enabled for owner/demo");
+  });
+
   it("does not let an enable resume after disable completes during checkout detection", async () => {
     const { root, repoPath } = fixtureRepository();
     writeConfig(root, repoPath);
