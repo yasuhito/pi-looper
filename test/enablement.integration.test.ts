@@ -79,10 +79,19 @@ async function loadExtension(
   return { commands, messages };
 }
 
-function writeConfig(root: string, repoPath: string): void {
+function writeConfig(root: string, repoPath: string, options: { autoMerge?: boolean; worktreeRoot?: string } = {}): void {
   const stateDir = path.join(root, ".pi", "agent", "deadloop");
   mkdirSync(stateDir, { recursive: true });
-  writeFileSync(path.join(stateDir, "projects.json"), JSON.stringify({ projects: [{ id: "demo", repoPath, githubRepo: "owner/demo", automations: [] }] }));
+  writeFileSync(path.join(stateDir, "projects.json"), JSON.stringify({
+    projects: [{
+      id: "demo",
+      repoPath,
+      githubRepo: "owner/demo",
+      automations: [],
+      ...(options.autoMerge === undefined ? {} : { autoMerge: options.autoMerge }),
+      ...(options.worktreeRoot === undefined ? {} : { worktreeRoot: options.worktreeRoot }),
+    }],
+  }));
 }
 
 async function invoke(handler: CommandHandler, cwd: string): Promise<void> {
@@ -110,6 +119,34 @@ describe("enablement command integration", () => {
     await invoke(extension.commands.get("deadloop-enable")!, repoPath);
 
     expect(extension.messages.at(-1)).toContain("deadloop enabled");
+  });
+
+  it("keeps first-enable auto-merge disabled after an unrelated configuration edit", async () => {
+    const { root, repoPath } = fixtureRepository();
+    writeConfig(root, repoPath, { autoMerge: true });
+    const extension = await loadExtension(root);
+    await invoke(extension.commands.get("deadloop-enable")!, repoPath);
+    writeConfig(root, repoPath, { autoMerge: true, worktreeRoot: "/tmp/other" });
+
+    await invoke(extension.commands.get("deadloop-enable")!, repoPath);
+
+    expect(extension.messages.at(-1)).toContain("autoMerge is off");
+  });
+
+  it("preserves explicit auto-merge confirmation across disable and re-enable", async () => {
+    const { root, repoPath } = fixtureRepository();
+    writeConfig(root, repoPath, { autoMerge: true });
+    const extension = await loadExtension(root);
+    await invoke(extension.commands.get("deadloop-enable")!, repoPath);
+    writeConfig(root, repoPath, { autoMerge: false });
+    await invoke(extension.commands.get("deadloop-enable")!, repoPath);
+    writeConfig(root, repoPath, { autoMerge: true });
+    await invoke(extension.commands.get("deadloop-enable")!, repoPath);
+    await invoke(extension.commands.get("deadloop-disable")!, repoPath);
+
+    await invoke(extension.commands.get("deadloop-enable")!, repoPath);
+
+    expect(extension.messages.at(-1)).toContain("autoMerge is on");
   });
 
   it("does not record enablement when label preparation fails", async () => {
@@ -160,6 +197,6 @@ describe("enablement command integration", () => {
 
     await invoke(extension.commands.get("deadloop-disable")!, repoPath);
 
-    expect(JSON.parse(readFileSync(path.join(root, ".pi", "agent", "deadloop", "enabled-projects.json"), "utf8")).projects).toHaveLength(0);
+    expect(JSON.parse(readFileSync(path.join(root, ".pi", "agent", "deadloop", "enabled-projects.json"), "utf8")).projects[0].enabled).toBe(false);
   });
 });

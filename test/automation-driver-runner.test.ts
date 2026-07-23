@@ -10,7 +10,14 @@ function foundFile(requested: string | undefined): AutomationFileResolution {
 
 async function exerciseDriver(
   stdout: string,
-  options: { code?: number; stderr?: string; initialEntry?: Record<string, unknown>; isEnabled?: () => boolean; runPrecheck?: () => void } = {},
+  options: {
+    code?: number;
+    stderr?: string;
+    initialEntry?: Record<string, unknown>;
+    isEnabled?: () => boolean;
+    runDriver?: () => void;
+    runPrecheck?: () => void;
+  } = {},
 ) {
   const project = normalizeProject({
     id: "demo",
@@ -30,7 +37,10 @@ async function exerciseDriver(
     now: () => 456,
     readPrompt: () => "full prompt",
     resolveAutomationFileInDir: (_kind, _automation, requested) => foundFile(requested),
-    runDriver: async () => ({ code: options.code ?? 0, stdout, stderr: options.stderr ?? "" }),
+    runDriver: async () => {
+      options.runDriver?.();
+      return { code: options.code ?? 0, stdout, stderr: options.stderr ?? "" };
+    },
     runPrecheck: async () => {
       options.runPrecheck?.();
       return { code: 0, stdout: "", stderr: "" };
@@ -141,6 +151,26 @@ describe("deterministic automation driver runner", () => {
     });
 
     expect(result.sent).toEqual([]);
+  });
+
+  it("does not dispatch a driver prompt after enablement is removed during driver execution", async () => {
+    let enabled = true;
+    const result = await exerciseDriver(JSON.stringify({ action: "needs_llm", prompt: "driver prompt" }), {
+      isEnabled: () => enabled,
+      runDriver: () => { enabled = false; },
+    });
+
+    expect(result.sent).toEqual([]);
+  });
+
+  it("records disabled-before-driver-prompt when enablement is removed during driver execution", async () => {
+    let enabled = true;
+    const result = await exerciseDriver(JSON.stringify({ action: "needs_llm", prompt: "driver prompt" }), {
+      isEnabled: () => enabled,
+      runDriver: () => { enabled = false; },
+    });
+
+    expect(result.entry.lastResult).toBe("disabled_before_driver_prompt");
   });
 
   it("keeps prompt-only automations working when no driver is configured", async () => {

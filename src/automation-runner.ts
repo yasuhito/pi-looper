@@ -182,6 +182,12 @@ async function runConfiguredDriver(
       deps.notify?.(`deadloop driver returned invalid result: ${automation.name}`, "warning");
       return true;
     }
+    if (deps.isEnabled && !deps.isEnabled()) {
+      recordAutomationResult(entry, "disabled_before_driver_prompt");
+      entry.updatedAt = deps.now();
+      deps.saveState(state);
+      return true;
+    }
     try {
       deps.sendUserMessage(prompt);
       recordAutomationResult(entry, "driver_needs_llm_queued");

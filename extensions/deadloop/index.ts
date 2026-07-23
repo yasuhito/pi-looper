@@ -28,6 +28,7 @@ import {
   findEnabledProject,
   isEnabledProjectState,
   normalizeEnablementState,
+  observeAutoMerge,
   removeEnabledProject,
   removeEnabledProjectAtPath,
   upsertEnabledProject,
@@ -272,18 +273,19 @@ async function updateEnablementState(update) {
   throw new Error("enablement state is busy; retry the command");
 }
 
-function configMtimeMs() {
-  try {
-    return fs.statSync(CONFIG_PATH).mtimeMs;
-  } catch {
-    return null;
-  }
-}
-
 function applyFirstEnableAutoMergeGate(project) {
-  const enabled = findEnabledProject(loadEnablementState(), project);
-  if (!enabled || enabled.firstEnableAutoMerge === undefined) return project;
-  if (enabled.firstEnableConfigMtimeMs === configMtimeMs()) project.autoMerge = false;
+  const state = loadEnablementState();
+  const enabled = findEnabledProject(state, project);
+  if (!enabled || enabled.firstEnableAutoMerge !== true || enabled.autoMergeAcknowledged) return project;
+
+  const observed = observeAutoMerge(state, project, project.autoMerge);
+  const updated = findEnabledProject(observed, project);
+  if (updated?.autoMergeAcknowledged) {
+    saveEnablementState(observed);
+    return project;
+  }
+  if (updated?.lastObservedAutoMerge !== enabled.lastObservedAutoMerge) saveEnablementState(observed);
+  project.autoMerge = false;
   return project;
 }
 
@@ -839,7 +841,6 @@ export default function (pi) {
         const configuredProject = activeProject(ctx.cwd, loadProjectsResult(ctx.cwd, { includeDisabled: true }).projects);
         const firstEnable = {
           firstEnableAutoMerge: Boolean(configuredProject?.autoMerge),
-          firstEnableConfigMtimeMs: configMtimeMs() ?? undefined,
         };
         let newlyEnabled = false;
         await updateEnablementState(async (state) => {
@@ -851,7 +852,7 @@ export default function (pi) {
         const projects = loadProjects(ctx.cwd);
         const project = activeProject(ctx.cwd, projects);
         if (!project) throw new Error("enabled repository configuration could not be resolved safely");
-        if (newlyEnabled) project.autoMerge = false;
+        if (newlyEnabled && !findEnabledProject(loadEnablementState(), identity)?.autoMergeAcknowledged) project.autoMerge = false;
         startScheduler(ctx, project);
         const owner = ownsLock ? "this session" : `another session (pid ${readLock(projectLockPath(project))?.pid || "unknown"})`;
         const message = `deadloop enabled for ${identity.githubRepo}; scheduler owner: ${owner}. autoMerge is ${project.autoMerge ? "on (existing local setting preserved)" : "off"}.`;
