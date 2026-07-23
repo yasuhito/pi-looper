@@ -22,6 +22,6 @@ export function inferredProjectId(repoPath: string, githubRepo: string): string 
   return `${sanitizeId(path.basename(repoPath))}-${projectIdentityHash(repoPath, githubRepo)}`;
 }
 
-export function schedulerLockName(project: { id: string; repoPath: string; githubRepo: string }): string {
-  return `scheduler.${sanitizeId(project.id)}.${projectIdentityHash(project.repoPath, project.githubRepo)}.lock`;
+export function schedulerLockName(project: { id?: string; repoPath: string; githubRepo: string }): string {
+  return `scheduler.${projectIdentityHash(project.repoPath, project.githubRepo)}.lock`;
 }

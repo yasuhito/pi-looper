@@ -35,8 +35,27 @@ function releaseOwned(lockPath, token) {
   try { fs.unlinkSync(lockPath); } catch (error) { if (error.code !== "ENOENT") throw error; }
 }
 
+const MALFORMED_LOCK_GRACE_MS = 1_000;
+
+function isOldMalformedLock(file) {
+  if (readMetadata(file)) return false;
+  try {
+    return Date.now() - fs.statSync(file).mtimeMs >= MALFORMED_LOCK_GRACE_MS;
+  } catch {
+    return false;
+  }
+}
+
+function clearReclaimRemnant(lockPath) {
+  const claimPath = `${lockPath}.reclaim`;
+  if (!fs.existsSync(claimPath)) return;
+  if (fs.existsSync(lockPath) && !sameFile(lockPath, claimPath)) return;
+  try { fs.unlinkSync(claimPath); } catch (error) { if (error.code !== "ENOENT") throw error; }
+}
+
 function reclaimStale(lockPath, hooks = {}) {
   const claimPath = `${lockPath}.reclaim`;
+  clearReclaimRemnant(lockPath);
   try {
     fs.linkSync(lockPath, claimPath);
   } catch (error) {
@@ -45,9 +64,10 @@ function reclaimStale(lockPath, hooks = {}) {
   }
   try {
     const owner = readMetadata(claimPath);
-    if (!owner || isPidAlive(owner.pid) || !sameFile(lockPath, claimPath)) return false;
+    if ((!owner && !isOldMalformedLock(claimPath)) || (owner && isPidAlive(owner.pid)) || !sameFile(lockPath, claimPath)) return false;
     hooks.beforeStaleUnlink?.();
-    if (!sameFile(lockPath, claimPath) || readMetadata(lockPath)?.token !== owner.token) return false;
+    if (!sameFile(lockPath, claimPath)) return false;
+    if (owner ? readMetadata(lockPath)?.token !== owner.token : !isOldMalformedLock(lockPath)) return false;
     fs.unlinkSync(lockPath);
     return true;
   } finally {
@@ -56,7 +76,7 @@ function reclaimStale(lockPath, hooks = {}) {
 }
 
 function tryAcquire(lockPath, hooks) {
-  if (fs.existsSync(`${lockPath}.reclaim`)) return null;
+  clearReclaimRemnant(lockPath);
   const token = crypto.randomUUID();
   try {
     const fd = fs.openSync(lockPath, "wx");

@@ -55,7 +55,7 @@ fi
 
 async function loadExtension(
   root: string,
-  options: { failLabel?: boolean; labels?: unknown[]; viewerPermission?: string; pushRemote?: string; noUpstream?: boolean } = {},
+  options: { failLabel?: boolean; labels?: unknown[]; viewerPermission?: string; pushRemote?: string; noUpstream?: boolean; beforeGithubRepoCheck?: () => Promise<void> } = {},
 ): Promise<{ commands: Map<string, CommandHandler>; ghCommands: string[][]; messages: string[] }> {
   process.env.HOME = root;
   process.env.PI_CODING_AGENT_DIR = path.join(root, ".pi", "agent");
@@ -84,7 +84,10 @@ async function loadExtension(
       }
       if (command === "gh") ghCommands.push(args);
       if (command === "gh" && args[0] === "auth") return { code: 0, stdout: "", stderr: "" };
-      if (command === "gh" && args[0] === "repo") return { code: 0, stdout: JSON.stringify({ viewerPermission: options.viewerPermission || "WRITE" }), stderr: "" };
+      if (command === "gh" && args[0] === "repo") {
+        await options.beforeGithubRepoCheck?.();
+        return { code: 0, stdout: JSON.stringify({ viewerPermission: options.viewerPermission || "WRITE" }), stderr: "" };
+      }
       if (command === "gh" && args[0] === "label" && args[1] === "list") return { code: 0, stdout: JSON.stringify(options.labels || []), stderr: "" };
       if (command === "gh" && args[0] === "label" && args[1] === "create") {
         return options.failLabel ? { code: 1, stdout: "", stderr: "label denied" } : { code: 0, stdout: "", stderr: "" };
@@ -411,6 +414,27 @@ describe("enablement command integration", () => {
 
     const lockName = schedulerLockName({ id: "demo", repoPath, githubRepo: "owner/demo" });
     expect(existsSync(path.join(root, ".pi", "agent", "deadloop", lockName))).toBe(false);
+  });
+
+  it("keeps a later concurrent disable from being undone by an earlier enable", async () => {
+    const { root, repoPath } = fixtureRepository();
+    writeConfig(root, repoPath);
+    let releasePreflight!: () => void;
+    let preflightStarted!: () => void;
+    const preflight = new Promise<void>((resolve) => { preflightStarted = resolve; });
+    const holdPreflight = new Promise<void>((resolve) => { releasePreflight = resolve; });
+    const extension = await loadExtension(root, { beforeGithubRepoCheck: async () => {
+      preflightStarted();
+      await holdPreflight;
+    } });
+    const enabling = invoke(extension.commands.get("deadloop-enable")!, repoPath);
+    await preflight;
+
+    const disabling = invoke(extension.commands.get("deadloop-disable")!, repoPath);
+    releasePreflight();
+    await Promise.all([enabling, disabling]);
+
+    expect(JSON.parse(readFileSync(path.join(root, ".pi", "agent", "deadloop", "enabled-projects.json"), "utf8")).projects[0].enabled).toBe(false);
   });
 
   it("stops an enabled primary checkout when disabled", async () => {

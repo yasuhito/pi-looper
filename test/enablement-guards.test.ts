@@ -1,12 +1,12 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 const { assertEnabled, withEnabledProjectLock } = require("../src/enabled-operation.cjs");
 const { assertDriverEnabled } = require("../src/driver-enablement.cjs");
-const { reclaimStale } = require("../src/enablement-lock.cjs");
+const { acquireLockSync, reclaimStale } = require("../src/enablement-lock.cjs");
 const { GUARDED_OPERATION_TIMEOUT_MS, runGuarded } = require("../extensions/deadloop/automations/guarded-operation.ts");
 const originalConfigDir = process.env.PI_CODING_AGENT_DIR;
 const sandboxes: string[] = [];
@@ -78,6 +78,25 @@ describe("enablement mutation guards", () => {
     );
 
     expect(timeout).toBe(GUARDED_OPERATION_TIMEOUT_MS);
+  });
+
+  it("recovers an old empty lock left before metadata was written", () => {
+    const project = fixture();
+    const lockPath = path.join(project.stateDir, "enabled-projects.json.lock");
+    writeFileSync(lockPath, "");
+    const old = new Date(Date.now() - 60_000);
+    utimesSync(lockPath, old, old);
+
+    expect(acquireLockSync(lockPath, { attempts: 3, delayMs: 1 }).token).toEqual(expect.any(String));
+  });
+
+  it("recovers an orphaned reclaim hard link", () => {
+    const project = fixture();
+    const lockPath = path.join(project.stateDir, "enabled-projects.json.lock");
+    writeFileSync(lockPath, JSON.stringify({ pid: 999_999_999, token: "stale" }));
+    linkSync(lockPath, `${lockPath}.reclaim`);
+
+    expect(acquireLockSync(lockPath, { attempts: 3, delayMs: 1 }).token).toEqual(expect.any(String));
   });
 
   it("does not unlink a replacement created between stale inspection and removal", () => {

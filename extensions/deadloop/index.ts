@@ -275,17 +275,23 @@ function saveEnablementState(state) {
   writeJsonFile(ENABLEMENT_PATH, state);
 }
 
-async function updateEnablementState(update) {
+async function withEnablementStateLock(operation) {
   const lockPath = `${ENABLEMENT_PATH}.lock`;
   fs.mkdirSync(STATE_DIR, { recursive: true });
   const lock = await acquireLock(lockPath, { busyMessage: "enablement state is busy; retry the command" });
   try {
-    const next = await update(loadEnablementState());
-    saveEnablementState(next);
-    return next;
+    return await operation();
   } finally {
     releaseOwned(lockPath, lock.token);
   }
+}
+
+async function updateEnablementState(update) {
+  return await withEnablementStateLock(async () => {
+    const next = await update(loadEnablementState());
+    saveEnablementState(next);
+    return next;
+  });
 }
 
 async function applyFirstEnableAutoMergeGate(project) {
@@ -785,7 +791,8 @@ export default function (pi) {
       return;
     }
     if (projectLockPath(project) !== active.lockPath) {
-      setLooperStatus(ctx, "skipped: active project changed since scheduler lock was acquired");
+      stopScheduler(ctx);
+      setLooperStatus(ctx, "skipped: active project identity changed since scheduler lock was acquired");
       return;
     }
     if (running) return;
@@ -857,27 +864,30 @@ export default function (pi) {
     description: "Enable deadloop locally for this primary Git checkout",
     handler: async (_args, ctx) => {
       try {
-        const identity = await detectProjectIdentity(pi, ctx.cwd);
-        const wasEnabled = Boolean(findEnabledProject(loadEnablementState(), identity));
-        let configuredProject;
-        try {
-          configuredProject = resolveEnableProject(ctx.cwd, identity);
-        } catch (error) {
-          if (wasEnabled) await updateEnablementState((state) => removeEnabledProject(state, identity));
-          throw error;
-        }
-        const firstEnable = {
-          firstEnableAutoMerge: Boolean(configuredProject.autoMerge),
-        };
-        try {
-          await prepareGithub(pi, identity.githubRepo);
-        } catch (error) {
-          if (wasEnabled) await updateEnablementState((state) => removeEnabledProject(state, identity));
-          throw error;
-        }
-        await updateEnablementState((state) => {
-          if (findEnabledProject(state, identity)) return state;
-          return upsertEnabledProject(state, identity, Date.now(), firstEnable);
+        let identity;
+        await withEnablementStateLock(async () => {
+          identity = await detectProjectIdentity(pi, ctx.cwd);
+          const state = loadEnablementState();
+          const wasEnabled = Boolean(findEnabledProject(state, identity));
+          let configuredProject;
+          try {
+            configuredProject = resolveEnableProject(ctx.cwd, identity);
+          } catch (error) {
+            if (wasEnabled) saveEnablementState(removeEnabledProject(state, identity));
+            throw error;
+          }
+          const firstEnable = {
+            firstEnableAutoMerge: Boolean(configuredProject.autoMerge),
+          };
+          try {
+            await prepareGithub(pi, identity.githubRepo);
+          } catch (error) {
+            if (wasEnabled) saveEnablementState(removeEnabledProject(state, identity));
+            throw error;
+          }
+          if (!findEnabledProject(state, identity)) {
+            saveEnablementState(upsertEnabledProject(state, identity, Date.now(), firstEnable));
+          }
         });
         let project;
         try {
@@ -905,26 +915,27 @@ export default function (pi) {
     description: "Disable local deadloop scheduling for this repository without stopping active agents",
     handler: async (_args, ctx) => {
       try {
-        let identity;
-        try {
-          identity = await detectProjectIdentity(pi, ctx.cwd);
-        } catch {
-          const repoPath = (await commandExec(pi, "git", ["-C", ctx.cwd, "rev-parse", "--show-toplevel"])).stdout.trim();
-          const commonDir = (await commandExec(pi, "git", ["-C", ctx.cwd, "rev-parse", "--git-common-dir"])).stdout.trim();
-          if (isLinkedGitWorktree(repoPath, commonDir)) {
-            const primaryCheckout = path.dirname(path.resolve(ctx.cwd, commonDir));
-            throw new Error(`linked worktrees cannot be disabled; run /deadloop-disable from the primary checkout: ${primaryCheckout}`);
+        let message;
+        await withEnablementStateLock(async () => {
+          let identity;
+          try {
+            identity = await detectProjectIdentity(pi, ctx.cwd);
+          } catch {
+            const repoPath = (await commandExec(pi, "git", ["-C", ctx.cwd, "rev-parse", "--show-toplevel"])).stdout.trim();
+            const commonDir = (await commandExec(pi, "git", ["-C", ctx.cwd, "rev-parse", "--git-common-dir"])).stdout.trim();
+            if (isLinkedGitWorktree(repoPath, commonDir)) {
+              const primaryCheckout = path.dirname(path.resolve(ctx.cwd, commonDir));
+              throw new Error(`linked worktrees cannot be disabled; run /deadloop-disable from the primary checkout: ${primaryCheckout}`);
+            }
+            saveEnablementState(removeEnabledProjectAtPath(loadEnablementState(), repoPath));
+            if (active?.project?.repoPath && path.resolve(active.project.repoPath) === path.resolve(repoPath)) stopScheduler(ctx);
+            message = "deadloop disabled for this checkout. Existing agents, GitHub state, worktrees, and run artifacts were left unchanged.";
+            return;
           }
-          await updateEnablementState((state) => removeEnabledProjectAtPath(state, repoPath));
-          if (active?.project?.repoPath && path.resolve(active.project.repoPath) === path.resolve(repoPath)) stopScheduler(ctx);
-          const message = "deadloop disabled for this checkout. Existing agents, GitHub state, worktrees, and run artifacts were left unchanged.";
-          if (ctx.mode === "print" || ctx.mode === "json") console.log(message);
-          else pi.sendMessage({ customType: "deadloop-disable", content: message, display: true });
-          return;
-        }
-        await updateEnablementState((state) => removeEnabledProjectAtPath(removeEnabledProject(state, identity), identity.repoPath));
-        if (active?.project?.githubRepo === identity.githubRepo && path.resolve(active.project.repoPath) === path.resolve(identity.repoPath)) stopScheduler(ctx);
-        const message = `deadloop disabled for ${identity.githubRepo}. Existing agents, GitHub state, worktrees, and run artifacts were left unchanged.`;
+          saveEnablementState(removeEnabledProjectAtPath(removeEnabledProject(loadEnablementState(), identity), identity.repoPath));
+          if (active?.project?.githubRepo === identity.githubRepo && path.resolve(active.project.repoPath) === path.resolve(identity.repoPath)) stopScheduler(ctx);
+          message = `deadloop disabled for ${identity.githubRepo}. Existing agents, GitHub state, worktrees, and run artifacts were left unchanged.`;
+        });
         if (ctx.mode === "print" || ctx.mode === "json") console.log(message);
         else pi.sendMessage({ customType: "deadloop-disable", content: message, display: true });
       } catch (error) {

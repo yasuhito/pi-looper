@@ -11,6 +11,10 @@ describe("canonical project identity", () => {
     expect(schedulerLockName(first)).not.toBe(schedulerLockName(second));
   });
 
+  it("uses the same scheduler lock when only the explicit project id changes", () => {
+    expect(schedulerLockName(first)).toBe(schedulerLockName({ ...first, id: "renamed" }));
+  });
+
   it("uses different inferred worktree directory ids for repositories with the same basename", () => {
     expect(inferredProjectId(first.repoPath, first.githubRepo)).not.toBe(inferredProjectId(second.repoPath, second.githubRepo));
   });
