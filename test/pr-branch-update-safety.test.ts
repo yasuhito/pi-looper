@@ -17,7 +17,7 @@ function finalizeWith(
   timeouts: Array<number | undefined> = [],
   pushUrl = "https://github.com/owner/repo.git",
   repositoryIds: Record<string, string> = {},
-  raceRemoteHead?: string,
+  raceRemoteHead?: string | null,
 ) {
   let observedHead = actualHead;
   return finalizeBranchUpdate(
@@ -44,10 +44,14 @@ function finalizeWith(
         commands.push(args);
         timeouts.push(timeoutMs);
         if (args.includes("get-url")) return { status: 0, stdout: `${pushUrl}\n`, stderr: "" };
-        if (args.includes("push") && raceRemoteHead && raceRemoteHead !== head) {
-          return { status: 1, stdout: "", stderr: "rejected (non-fast-forward)" };
+        const expectedLease = `--force-with-lease=refs/heads/agent/issue-31:${head}`;
+        if (args.includes("push") && raceRemoteHead !== undefined && raceRemoteHead !== head && args.includes(expectedLease)) {
+          return { status: 1, stdout: "", stderr: "rejected (stale info)" };
         }
-        if (args.includes("ls-remote")) return { status: 0, stdout: `${raceRemoteHead || head}\trefs/heads/agent/issue-31\n`, stderr: "" };
+        if (args.includes("ls-remote")) {
+          const remoteLine = raceRemoteHead === null ? "" : `${raceRemoteHead ?? head}\trefs/heads/agent/issue-31\n`;
+          return { status: 0, stdout: remoteLine, stderr: "" };
+        }
         if (args[0] === "gh" && args[1] === "repo") {
           return { status: 0, stdout: JSON.stringify({ id: repositoryIds[args[3]] || (args[3] === "other/repo" ? "R_other" : "R_repo") }), stderr: "" };
         }
@@ -147,7 +151,7 @@ describe("PR branch-update safety", () => {
     expect(timeouts.slice(firstGuardedCommand)).toEqual([25_000, 25_000, 25_000, 25_000, 25_000]);
   });
 
-  it("pushes only the selected existing branch without force", () => {
+  it("pushes only the selected existing branch with an expected-head lease", () => {
     const commands: string[][] = [];
     finalizeWith(commands);
 
@@ -157,6 +161,7 @@ describe("PR branch-update safety", () => {
       "/worktree",
       "push",
       "--porcelain",
+      `--force-with-lease=refs/heads/agent/issue-31:${head}`,
       "https://github.com/owner/repo.git",
       "HEAD:refs/heads/agent/issue-31",
     ]);
@@ -172,7 +177,7 @@ describe("PR branch-update safety", () => {
     const commands: string[][] = [];
     finalizeWith(commands, head, undefined, [], "https://github.com/old/repo.git");
 
-    expect(commands.find((command) => command.includes("push"))?.[5]).toBe("https://github.com/old/repo.git");
+    expect(commands.find((command) => command.includes("push"))).toContain("https://github.com/old/repo.git");
   });
 
   it("rejects a recorded branch-update alias when its repository name has been reused", () => {
@@ -185,12 +190,18 @@ describe("PR branch-update safety", () => {
     const commands: string[][] = [];
     finalizeWith(commands);
 
-    expect(commands.find((command) => command.includes("push"))?.[5]).toBe("https://github.com/owner/repo.git");
+    expect(commands.find((command) => command.includes("push"))).toContain("https://github.com/owner/repo.git");
   });
 
-  it("does not update a remote concurrently changed from the expected head", () => {
+  it("does not update a remote concurrently fast-forwarded to a local ancestor", () => {
     const commands: string[][] = [];
     const result = finalizeWith(commands, head, undefined, [], "https://github.com/owner/repo.git", {}, base);
+
+    expect(result.action).toBe("stale_head");
+  });
+
+  it("does not recreate a concurrently deleted remote branch", () => {
+    const result = finalizeWith([], head, undefined, [], "https://github.com/owner/repo.git", {}, null);
 
     expect(result.action).toBe("stale_head");
   });
