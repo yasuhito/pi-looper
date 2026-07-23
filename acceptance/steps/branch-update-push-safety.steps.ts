@@ -65,8 +65,24 @@ function finalize(world: SafetyWorld): void {
   );
 }
 
+function pushCommands(world: SafetyWorld): string[][] {
+  return world.commands?.filter((command) => command[0] === "git" && command.includes("push")) ?? [];
+}
+
 function pushed(world: SafetyWorld): boolean {
-  return Boolean(world.commands?.some((command) => command.includes("push")));
+  return pushCommands(world).length > 0;
+}
+
+function isForceArgument(argument: string): boolean {
+  return (
+    argument === "--force" ||
+    argument.startsWith("--force=") ||
+    argument === "--force-with-lease" ||
+    argument.startsWith("--force-with-lease=") ||
+    argument === "--force-if-includes" ||
+    /^-[^-]*f/.test(argument) ||
+    argument.startsWith("+")
+  );
 }
 
 function temporaryRoot(world: SafetyWorld, prefix: string): string {
@@ -207,11 +223,16 @@ Then("自動チェックは pull request head 確認より先に実行される"
 });
 
 Then("選択された branch だけが push の対象になる", function (this: SafetyWorld) {
-  assert.equal(this.commands?.find((command) => command.includes("push"))?.at(-1), `HEAD:refs/heads/${branch}`);
+  assert.deepEqual(pushCommands(this), [
+    ["git", "-C", "/worktree", "push", "--porcelain", "origin", `HEAD:refs/heads/${branch}`],
+  ]);
 });
 
 Then("branch は強制せずに push される", function (this: SafetyWorld) {
-  assert.equal(this.commands?.find((command) => command.includes("push"))?.some((argument) => argument.includes("force")), false);
+  assert.equal(
+    pushCommands(this).some((command) => command.slice(command.indexOf("push") + 1).some(isForceArgument)),
+    false,
+  );
 });
 
 After(function (this: SafetyWorld) {

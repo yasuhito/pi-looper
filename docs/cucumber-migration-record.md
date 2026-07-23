@@ -14,7 +14,7 @@
 | T288 | 同じ保証へ統合 | push 直前に pull request head が変わった場合は branch を更新しない |
 | T289 | 移行済み | 別リポジトリの pull request は branch を更新しない |
 | T290 | 移行済み | 自動チェックは push 直前の head 確認より先に実行される |
-| T291 | 同じ保証を分割 | 更新できる pull request は選択された branch だけへ push する／更新できる pull request は強制せずに push する |
+| T291 | 移行済み | 更新できる pull request は選択された branch だけへ push する／更新できる pull request は強制せずに push する |
 | T292 | 同じ保証へ統合 | push 直前に pull request head が変わった場合は branch を更新しない |
 
 T285〜T287 は retry key と記録済み試行の低レベル状態を診断するため、Vitest 継続とする。
@@ -32,24 +32,29 @@ Cucumber は 9 シナリオ 48 ステップ、Vitest は対象 4 ファイル 35
 
 ### 意図的失敗の確認
 
-「更新できる pull request は強制せずに push する」の期待値を一時的に `false` から `true` へ変更し、`npm run test:acceptance` を実行した。コマンドは終了状態 1 となり、次のシナリオ、位置、差分を報告した。
+各移行先について期待する外部結果を一時的に壊し、毎回 `npm run test:acceptance` が終了状態 1 となることを確認した。結果は次のとおり。いずれも失敗したシナリオ名、feature と step の位置、期待値との差分を報告した。
+
+| 分類 ID | 一時的に与えた失敗 | 報告された結果 |
+|---|---|---|
+| T021 | 起動記録があることを期待 | 「信頼されていない作業場所では作業エージェントを起動しない」が失敗（8 passed, 1 failed） |
+| T283 | 作業エージェントの起動結果があることを期待 | 「変更中の作業場所では branch 更新の作業エージェントを起動しない」が失敗 |
+| T284 | 作業エージェントの起動結果があることを期待 | 「選択後に head が変わった pull request は作業エージェントを起動しない」が失敗（両シナリオの実行では 7 passed, 2 failed） |
+| T288、T292 | push があることを期待 | 「push 直前に pull request head が変わった場合は branch を更新しない」が失敗 |
+| T289 | push があることを期待 | 「別リポジトリの pull request は branch を更新しない」が失敗（両シナリオの実行では 7 passed, 2 failed） |
+| T290 | 自動チェックが head 確認より後であることを期待 | 「自動チェックは push 直前の head 確認より先に実行される」が失敗（8 passed, 1 failed） |
+| T291 | 記録する push に別 branch の refspec を追加 | 「更新できる pull request は選択された branch だけへ push する」が失敗（8 passed, 1 failed） |
+| T291 | 記録する refspec を `+HEAD:refs/heads/agent/issue-31` に変更 | 「更新できる pull request は強制せずに push する」が失敗（このシナリオを含む 2 件が失敗） |
+
+追加 refspec と強制 refspec の確認では、次の差分と位置が報告された。
 
 ```text
+更新できる pull request は選択された branch だけへ push する # acceptance/features/branch-update-push-safety.feature.md:43
+ならば選択された branch だけが push の対象になる # acceptance/steps/branch-update-push-safety.steps.ts:225
++     'HEAD:refs/heads/other'
+
 更新できる pull request は強制せずに push する # acceptance/features/branch-update-push-safety.feature.md:49
-ならばbranch は強制せずに push される # acceptance/steps/branch-update-push-safety.steps.ts:213
-AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
-
-false !== true
-
-    + expected - actual
-
-    -false
-    +true
-
-    at World.<anonymous> (.../acceptance/steps/branch-update-push-safety.steps.ts:214:10)
-
-9 scenarios (8 passed, 1 failed)
-48 steps (47 passed, 1 failed)
+ならばbranch は強制せずに push される # acceptance/steps/branch-update-push-safety.steps.ts:231
+true !== false
 ```
 
-確認後、期待値は `false` に戻した。
+確認のたびに一時変更を戻した。最後に変更のない期待値で再実行し、9 シナリオ 48 ステップが成功した。
