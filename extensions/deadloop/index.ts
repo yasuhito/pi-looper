@@ -1,13 +1,9 @@
-const childProcess = require("node:child_process");
-const fs = require("node:fs");
-const os = require("node:os");
-const path = require("node:path");
+import childProcess from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
-const EXTENSION_NAME = "deadloop";
-const STATUS_KEY = EXTENSION_NAME;
-const TICK_MS = 30_000;
-const MODULE_LOAD_TIME_MS = Date.now();
-const {
+import {
   DEFAULT_TIMEZONE,
   REPO_POLICY_FILE,
   automationEnvironment,
@@ -22,23 +18,25 @@ const {
   resolveConfigPath,
   sanitizeId,
   templateValues,
-} = require("../../src/core.ts");
-const {
-  buildDoctorSnapshot,
-  formatDoctorReport,
-} = require("../../src/doctor.ts");
-const { buildStatusSnapshot, formatStatusReport } = require("../../src/status.ts");
-const { readClaudeConfig } = require("../../src/agent-trust.cjs");
-const { runScheduledAutomation } = require("../../src/automation-runner.ts");
+} from "../../src/core";
+import { buildDoctorSnapshot, formatDoctorReport } from "../../src/doctor";
+import { buildStatusSnapshot, formatStatusReport } from "../../src/status";
+import { readClaudeConfig } from "../../src/agent-trust.cjs";
+import { runScheduledAutomation } from "../../src/automation-runner";
 const { createAsyncHerdrRunner } = require("../../src/herdr-runner.ts");
-const {
+import {
   findEnabledProject,
   isEnabledProjectState,
   normalizeEnablementState,
   removeEnabledProject,
   removeEnabledProjectAtPath,
   upsertEnabledProject,
-} = require("../../src/enablement.ts");
+} from "../../src/enablement";
+
+const EXTENSION_NAME = "deadloop";
+const STATUS_KEY = EXTENSION_NAME;
+const TICK_MS = 30_000;
+const MODULE_LOAD_TIME_MS = Date.now();
 
 const CONFIG_DIR = process.env.PI_CODING_AGENT_DIR || path.join(os.homedir(), ".pi", "agent");
 const STATE_DIR = path.join(CONFIG_DIR, EXTENSION_NAME);
@@ -115,19 +113,19 @@ function gitSync(repoPath, args, timeout = 30_000) {
 
 function trustedRepoPolicyProvider(project) {
   const repoPath = project.repoPath;
-  if (!repoPath) return { status: "missing" };
+  if (!repoPath) return { status: "missing" as const };
   const baseBranch = project.baseBranch || "origin/main";
 
   const fetch = gitSync(repoPath, ["fetch", "--quiet"], 30_000);
   if (fetch.status !== 0) {
     const reason = (fetch.stderr || fetch.stdout || fetch.error?.message || "git fetch failed").trim();
-    return { status: "error", reason: `trusted repo policy fetch failed for ${baseBranch}: ${reason}` };
+    return { status: "error" as const, reason: `trusted repo policy fetch failed for ${baseBranch}: ${reason}` };
   }
 
   const show = gitSync(repoPath, ["show", `${baseBranch}:${REPO_POLICY_FILE}`], 10_000);
-  if (show.status === 0) return { status: "loaded", text: show.stdout || "{}" };
+  if (show.status === 0) return { status: "loaded" as const, text: show.stdout || "{}" };
   debugLog("trusted repo policy missing", repoPath, baseBranch, String(show.stderr || show.stdout || "").trim());
-  return { status: "missing" };
+  return { status: "missing" as const };
 }
 
 function projectFilter() {
@@ -702,6 +700,7 @@ async function prepareGithub(pi, githubRepo) {
 }
 async function runAutomation(pi, ctx, project, automation, dueSlot, state) {
   await runScheduledAutomation(project, automation, dueSlot, state, {
+    isEnabled: () => isProjectEnabled(project),
     isIdle: typeof ctx.isIdle === "function" ? () => ctx.isIdle() : undefined,
     notify: (message, level) => {
       try {
@@ -875,6 +874,11 @@ export default function (pi) {
           identity = await detectProjectIdentity(pi, ctx.cwd);
         } catch {
           const repoPath = (await commandExec(pi, "git", ["-C", ctx.cwd, "rev-parse", "--show-toplevel"])).stdout.trim();
+          const commonDir = (await commandExec(pi, "git", ["-C", ctx.cwd, "rev-parse", "--git-common-dir"])).stdout.trim();
+          if (isLinkedGitWorktree(repoPath, commonDir)) {
+            const primaryCheckout = path.dirname(path.resolve(ctx.cwd, commonDir));
+            throw new Error(`linked worktrees cannot be disabled; run /deadloop-disable from the primary checkout: ${primaryCheckout}`);
+          }
           await updateEnablementState((state) => removeEnabledProjectAtPath(state, repoPath));
           if (active?.project?.repoPath && path.resolve(active.project.repoPath) === path.resolve(repoPath)) stopScheduler(ctx);
           const message = "deadloop disabled for this checkout. Existing agents, GitHub state, worktrees, and run artifacts were left unchanged.";

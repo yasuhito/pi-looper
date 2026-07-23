@@ -16,6 +16,7 @@ export type AutomationState = {
 };
 
 export type AutomationRunnerDeps = {
+  isEnabled?: () => boolean;
   isIdle?: () => boolean;
   notify?: (message: string, level: "info" | "warning" | "error") => void;
   now: () => number;
@@ -279,6 +280,13 @@ export async function runScheduledAutomation(
     return;
   }
 
+  if (deps.isEnabled && !deps.isEnabled()) {
+    recordAutomationResult(entry, "disabled_after_precheck");
+    entry.updatedAt = deps.now();
+    deps.saveState(state);
+    return;
+  }
+
   if (await runConfiguredDriver(project, automation, entry, state, deps)) return;
 
   const promptResolution = deps.resolveAutomationFileInDir("prompt", automation, automation.promptFile);
@@ -288,6 +296,13 @@ export async function runScheduledAutomation(
     entry.updatedAt = deps.now();
     deps.saveState(state);
     deps.notify?.(`deadloop prompt file missing: ${automation.name}`, "warning");
+    return;
+  }
+
+  if (deps.isEnabled && !deps.isEnabled()) {
+    recordAutomationResult(entry, "disabled_before_prompt");
+    entry.updatedAt = deps.now();
+    deps.saveState(state);
     return;
   }
 

@@ -10,7 +10,7 @@ function foundFile(requested: string | undefined): AutomationFileResolution {
 
 async function exerciseDriver(
   stdout: string,
-  options: { code?: number; stderr?: string; initialEntry?: Record<string, unknown> } = {},
+  options: { code?: number; stderr?: string; initialEntry?: Record<string, unknown>; isEnabled?: () => boolean; runPrecheck?: () => void } = {},
 ) {
   const project = normalizeProject({
     id: "demo",
@@ -24,13 +24,17 @@ async function exerciseDriver(
   const sent: string[] = [];
 
   await runScheduledAutomation(project, project.automations[0], 123, state, {
+    isEnabled: options.isEnabled,
     isIdle: () => true,
     notify: () => undefined,
     now: () => 456,
     readPrompt: () => "full prompt",
     resolveAutomationFileInDir: (_kind, _automation, requested) => foundFile(requested),
     runDriver: async () => ({ code: options.code ?? 0, stdout, stderr: options.stderr ?? "" }),
-    runPrecheck: async () => ({ code: 0, stdout: "", stderr: "" }),
+    runPrecheck: async () => {
+      options.runPrecheck?.();
+      return { code: 0, stdout: "", stderr: "" };
+    },
     saveState: () => undefined,
     sendUserMessage: (prompt) => sent.push(prompt),
     setStatus: () => undefined,
@@ -129,6 +133,16 @@ describe("deterministic automation driver runner", () => {
     expect(result.sent).toEqual([]);
   });
 
+  it("does not dispatch a driver after enablement is removed during precheck", async () => {
+    let enabled = true;
+    const result = await exerciseDriver(JSON.stringify({ action: "needs_llm", prompt: "driver prompt" }), {
+      isEnabled: () => enabled,
+      runPrecheck: () => { enabled = false; },
+    });
+
+    expect(result.sent).toEqual([]);
+  });
+
   it("keeps prompt-only automations working when no driver is configured", async () => {
     const project = normalizeProject({
       id: "demo",
@@ -151,5 +165,31 @@ describe("deterministic automation driver runner", () => {
     });
 
     expect(sent).toEqual(["full prompt"]);
+  });
+
+  it("does not dispatch a prompt after enablement is removed during precheck", async () => {
+    const project = normalizeProject({
+      id: "demo",
+      automations: [{ id: "demo:auto", name: "auto", precheckFile: "precheck.sh", promptFile: "full.md" }],
+    });
+    const state = { automations: {} };
+    const sent: string[] = [];
+    let enabled = true;
+
+    await runScheduledAutomation(project, project.automations[0], 123, state, {
+      isEnabled: () => enabled,
+      now: () => 456,
+      readPrompt: () => "full prompt",
+      resolveAutomationFileInDir: (_kind, _automation, requested) => foundFile(requested),
+      runDriver: async () => ({ code: 99, stdout: "should not run", stderr: "" }),
+      runPrecheck: async () => {
+        enabled = false;
+        return { code: 0, stdout: "", stderr: "" };
+      },
+      saveState: () => undefined,
+      sendUserMessage: (prompt) => sent.push(prompt),
+    });
+
+    expect(sent).toEqual([]);
   });
 });

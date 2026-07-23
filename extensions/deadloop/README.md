@@ -25,6 +25,8 @@ Worker, reviewer, and monitor prompts run the configured project check through `
 ## Commands
 
 ```text
+/deadloop-enable
+/deadloop-disable
 /deadloop-status
 /deadloop-doctor
 ```
