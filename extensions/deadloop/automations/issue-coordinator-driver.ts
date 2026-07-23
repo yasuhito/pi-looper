@@ -64,12 +64,42 @@ function gateMissingContractComment(issue: JsonObject): string {
   ].join("\n");
 }
 
-function applyContractMissing(issue: JsonObject, env: ReturnType<typeof envConfig>, fixture: JsonObject | null): void {
-  if (fixture) return;
-  const number = String(issue.number);
-  const github = githubOperations();
-  withEnabledDriverLock(env, () => github.moveIssueLabels(env.githubRepo, number, { remove: env.implementLabel, add: env.needsTriageLabel }));
-  withEnabledDriverLock(env, () => github.commentIssue(env.githubRepo, number, gateMissingContractComment(issue)));
+function applyIssueTransition(
+  issue: JsonObject,
+  expectedKind: "contract_missing" | "planning_blocked",
+  env: ReturnType<typeof envConfig>,
+  fixture: JsonObject | null,
+  mutate: (github: ReturnType<typeof githubOperations>, live: JsonObject) => void,
+): boolean {
+  if (fixture) return true;
+  try {
+    return withEnabledDriverLock(env, () => {
+      const github = githubOperations();
+      const live = github.getIssue(env.githubRepo, issue.number);
+      if (String(live.state || "").toUpperCase() !== "OPEN") throw new StaleLaunchError(`Issue #${issue.number} is no longer open`);
+      assertSameLaunchTarget(issue, live, "issue");
+      const livePlan = planIssueCoordinatorAction(
+        [live],
+        decisionForIssues(undefined, [live], env.githubRepo, env),
+      );
+      if (livePlan.kind !== expectedKind || Number(livePlan.issue.number) !== Number(issue.number)) {
+        throw new StaleLaunchError(`Issue #${issue.number} transition changed`);
+      }
+      mutate(github, live);
+      return true;
+    });
+  } catch (error) {
+    if (isStaleLaunchError(error)) return false;
+    throw error;
+  }
+}
+
+function applyContractMissing(issue: JsonObject, env: ReturnType<typeof envConfig>, fixture: JsonObject | null): boolean {
+  return applyIssueTransition(issue, "contract_missing", env, fixture, (github, live) => {
+    const number = String(live.number);
+    github.moveIssueLabels(env.githubRepo, number, { remove: env.implementLabel, add: env.needsTriageLabel });
+    github.commentIssue(env.githubRepo, number, gateMissingContractComment(live));
+  });
 }
 
 function blockedComment(issue: JsonObject, env: ReturnType<typeof envConfig>, reason: string): string {
@@ -87,12 +117,12 @@ function blockedComment(issue: JsonObject, env: ReturnType<typeof envConfig>, re
   });
 }
 
-function applyBlocked(issue: JsonObject, env: ReturnType<typeof envConfig>, comment: string, fixture: JsonObject | null): void {
-  if (fixture) return;
-  const number = String(issue.number);
-  const github = githubOperations();
-  withEnabledDriverLock(env, () => github.moveIssueLabels(env.githubRepo, number, { remove: env.implementLabel, add: env.blockedLabel }));
-  withEnabledDriverLock(env, () => github.commentIssue(env.githubRepo, number, comment));
+function applyBlocked(issue: JsonObject, env: ReturnType<typeof envConfig>, comment: string, fixture: JsonObject | null): boolean {
+  return applyIssueTransition(issue, "planning_blocked", env, fixture, (github, live) => {
+    const number = String(live.number);
+    github.moveIssueLabels(env.githubRepo, number, { remove: env.implementLabel, add: env.blockedLabel });
+    github.commentIssue(env.githubRepo, number, comment);
+  });
 }
 
 function slugForBranch(value: unknown): string {
@@ -227,7 +257,11 @@ function drive(fixturePath: string | undefined): DriverResult {
 
   const issue = issuePlan.issue;
   if (issuePlan.kind === "contract_missing") {
-    applyContractMissing(issue, env, fixture);
+    if (!applyContractMissing(issue, env, fixture)) {
+      return driverResult("skip", `Issue #${issue.number} changed before the contract gate; no workflow state was mutated`, {
+        driverAction: "contract_missing_stale", issueNumber: issue.number,
+      });
+    }
     return driverResult("done", `Issue #${issue.number} is missing its contract; moved it to needs-triage`, {
       driverAction: "contract_missing",
       issueNumber: issue.number,
@@ -237,7 +271,11 @@ function drive(fixturePath: string | undefined): DriverResult {
 
   if (issuePlan.kind === "planning_blocked") {
     const comment = blockedComment(issue, env, "Skipped automated implementation because this looks like a PRD, design, or parent issue.");
-    applyBlocked(issue, env, comment, fixture);
+    if (!applyBlocked(issue, env, comment, fixture)) {
+      return driverResult("skip", `Issue #${issue.number} changed before the planning gate; no workflow state was mutated`, {
+        driverAction: "planning_blocked_stale", issueNumber: issue.number,
+      });
+    }
     return driverResult("done", `Issue #${issue.number} is not an implementable unit; marked it blocked`, {
       driverAction: "blocked_comment",
       issueNumber: issue.number,

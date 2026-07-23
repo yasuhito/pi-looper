@@ -74,17 +74,26 @@ describe("local enablement state", () => {
     expect(isEnabledProjectState(removeEnabledProjectGeneration(second, project, 10), project)).toBe(true);
   });
 
-  it("acknowledges an explicit true setting observed after the safe first start", () => {
+  it("does not acknowledge an unchanged pre-existing true setting after the safe first start", () => {
     const initial = upsertEnabledProject(null, project, 1, { firstEnableAutoMerge: true });
     const afterSafeStart = { projects: initial.projects.map((enabled) => ({ ...enabled, firstStartPending: false })) };
 
-    expect(findEnabledProject(observeAutoMerge(afterSafeStart, project, true), project)?.autoMergeAcknowledged).toBe(true);
+    expect(findEnabledProject(observeAutoMerge(afterSafeStart, project, true), project)?.autoMergeAcknowledged).toBe(false);
+  });
+
+  it("acknowledges a post-enable change from false to true", () => {
+    const initial = upsertEnabledProject(null, project, 1, { firstEnableAutoMerge: true });
+    const afterSafeStart = { projects: initial.projects.map((enabled) => ({ ...enabled, firstStartPending: false })) };
+    const observedFalse = observeAutoMerge(afterSafeStart, project, false);
+
+    expect(findEnabledProject(observeAutoMerge(observedFalse, project, true), project)?.autoMergeAcknowledged).toBe(true);
   });
 
   it("retains an auto-merge acknowledgement when re-enabled", () => {
     const initial = upsertEnabledProject(null, project, 1, { firstEnableAutoMerge: true });
     const afterSafeStart = { projects: initial.projects.map((enabled) => ({ ...enabled, firstStartPending: false })) };
-    const acknowledged = observeAutoMerge(afterSafeStart, project, true);
+    const observedFalse = observeAutoMerge(afterSafeStart, project, false);
+    const acknowledged = observeAutoMerge(observedFalse, project, true);
 
     expect(findEnabledProject(upsertEnabledProject(removeEnabledProject(acknowledged, project), project, 2), project)?.autoMergeAcknowledged).toBe(true);
   });

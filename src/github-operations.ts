@@ -36,6 +36,13 @@ function createGithubOperations(commandRunner: CommandRunner) {
       ]);
     },
 
+    getIssue(repo: string, issueNumber: string | number): JsonObject {
+      return commandRunner.runJson([
+        "gh", "issue", "view", String(issueNumber), "-R", repo,
+        "--json", "number,title,body,labels,updatedAt,url,state",
+      ]);
+    },
+
     moveIssueLabels(repo: string, issueNumber: string | number, move: LabelMove): void {
       commandRunner.runText(["gh", "issue", "edit", String(issueNumber), "-R", repo, ...labelArgs(move)]);
     },
@@ -56,7 +63,14 @@ function createGithubOperations(commandRunner: CommandRunner) {
         "--limit",
         "100",
         "--json",
-        "number,title,url,updatedAt,headRefName,headRefOid,isCrossRepository,isDraft,mergeStateStatus,labels,statusCheckRollup,comments,reviewRequests",
+        "number,title,url,state,updatedAt,headRefName,headRefOid,isCrossRepository,isDraft,mergeStateStatus,labels,statusCheckRollup,comments,reviewRequests",
+      ]);
+    },
+
+    getPr(repo: string, prNumber: string | number): JsonObject {
+      return commandRunner.runJson([
+        "gh", "pr", "view", String(prNumber), "-R", repo,
+        "--json", "number,title,url,state,updatedAt,headRefName,headRefOid,isCrossRepository,isDraft,mergeStateStatus,labels,statusCheckRollup,comments,reviewRequests",
       ]);
     },
 

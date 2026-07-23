@@ -33,7 +33,7 @@ function finalizeWith(
   pushUrl = "https://github.com/owner/repo.git",
   repositoryIds: Record<string, string> = {},
   raceRemoteHead?: string | null,
-  localHeadChanges: { afterChecks?: string; beforePush?: string } = {},
+  localHeadChanges: { afterChecks?: string; beforePush?: string; projectCommonDir?: string; worktreeCommonDir?: string; checkedOutBranch?: string } = {},
 ) {
   let observedHead = actualHead;
   let localHead = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
@@ -68,6 +68,10 @@ function finalizeWith(
           const remoteLine = raceRemoteHead === null ? "" : `${raceRemoteHead ?? head}\trefs/heads/agent/issue-243\n`;
           return { status: 0, stdout: remoteLine, stderr: "" };
         }
+        if (args.includes("--git-common-dir")) {
+          return { status: 0, stdout: `${args[2] === "/repo" ? localHeadChanges.projectCommonDir || "/common" : localHeadChanges.worktreeCommonDir || "/common"}\n`, stderr: "" };
+        }
+        if (args.includes("symbolic-ref")) return { status: 0, stdout: `${localHeadChanges.checkedOutBranch || "agent/issue-243"}\n`, stderr: "" };
         if (args[0] === "gh" && args[1] === "repo") {
           if (localHeadChanges.beforePush) localHead = localHeadChanges.beforePush;
           return { status: 0, stdout: JSON.stringify({ id: repositoryIds[args[3]] || (args[3] === "other/repo" ? "R_other" : "R_repo") }), stderr: "" };
@@ -203,10 +207,10 @@ describe("automatic PR review repair", () => {
     finalizeWith(commands, head, undefined, timeouts);
     const firstGuardedCommand = commands.findIndex((command) => command[0] === "gh");
 
-    expect(timeouts.slice(firstGuardedCommand)).toEqual([25_000, 25_000, 25_000, 25_000, 25_000]);
+    expect(timeouts.slice(firstGuardedCommand)).toEqual([25_000, 25_000, 25_000, 25_000, 25_000, 25_000]);
   });
 
-  it("pushes the exact branch with an exact-head lease", () => {
+  it("pushes the exact branch without a force option", () => {
     const commands: string[][] = [];
     finalizeWith(commands);
 
@@ -216,10 +220,21 @@ describe("automatic PR review repair", () => {
       "/worktree",
       "push",
       "--porcelain",
-      `--force-with-lease=refs/heads/agent/issue-243:${head}`,
       "https://github.com/owner/repo.git",
       "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb:refs/heads/agent/issue-243",
     ]);
+  });
+
+  it("rejects a repair source from a foreign Git common directory", () => {
+    expect(() => finalizeWith([], head, undefined, [], "https://github.com/owner/repo.git", {}, undefined, { worktreeCommonDir: "/foreign" })).toThrow(
+      "does not belong to the enabled checkout",
+    );
+  });
+
+  it("rejects a repair source with the wrong checked-out branch", () => {
+    expect(() => finalizeWith([], head, undefined, [], "https://github.com/owner/repo.git", {}, undefined, { checkedOutBranch: "agent/issue-999" })).toThrow(
+      "does not match the requested branch",
+    );
   });
 
   it("rejects HEAD changing during configured checks", () => {

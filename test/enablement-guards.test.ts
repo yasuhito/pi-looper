@@ -34,15 +34,20 @@ function fixture() {
   writeFileSync(repositoryIdPath, "R_repo\n");
   const ghPath = path.join(binDir, "gh");
   const ghCallsPath = path.join(root, "gh-calls");
+  const reusedNamePath = path.join(root, "reused-name");
   writeFileSync(ghPath, `#!/bin/sh
 printf '%s\\n' "$*" >> '${ghCallsPath}'
-printf '{"id":"%s"}\\n' "$(cat '${repositoryIdPath}')"
+if [ -f '${reusedNamePath}' ] && [ "$3" = "owner/repo" ]; then
+  printf '{"id":"R_reused"}\\n'
+else
+  printf '{"id":"%s"}\\n' "$(cat '${repositoryIdPath}')"
+fi
 `);
   execFileSync("chmod", ["+x", ghPath]);
   process.env.PATH = `${binDir}:${originalPath || ""}`;
   execFileSync("git", ["-C", repoPath, "init", "--quiet"]);
   execFileSync("git", ["-C", repoPath, "remote", "add", "origin", "https://github.com/owner/repo.git"]);
-  return { repoPath, stateDir, githubRepo: "owner/repo", repositoryIdPath, ghCallsPath };
+  return { repoPath, stateDir, githubRepo: "owner/repo", repositoryIdPath, ghCallsPath, reusedNamePath };
 }
 
 function writeState(project: ReturnType<typeof fixture>, record: Record<string, unknown>, withSafetyFields = true) {
@@ -84,6 +89,15 @@ describe("enablement mutation guards", () => {
     const project = fixture();
     writeState(project, { enabledAt: 1, githubAliases: ["owner/repo"] });
     writeFileSync(project.repositoryIdPath, "R_reused\n");
+
+    expect(() => assertEnabled(project)).toThrow("disabled");
+  });
+
+  it("rejects a reused persisted mutation namespace after the origin follows a rename", () => {
+    const project = fixture();
+    writeState(project, { enabledAt: 1, githubAliases: ["owner/renamed"] });
+    execFileSync("git", ["-C", project.repoPath, "remote", "set-url", "origin", "https://github.com/owner/renamed.git"]);
+    writeFileSync(project.reusedNamePath, "reused\n");
 
     expect(() => assertEnabled(project)).toThrow("disabled");
   });

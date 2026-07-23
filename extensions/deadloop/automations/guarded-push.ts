@@ -109,4 +109,4 @@ function main(): void {
 }
 
 if (require.main === module) main();
-module.exports = { parseArgs, runGuardedPush };
+module.exports = { assertAuthorizedSource, parseArgs, runGuardedPush };

@@ -230,14 +230,46 @@ gh pr view ${Number(pr.number || 0)} -R ${shellQuote(env.githubRepo)} --comments
 3. After changing either the PR head or configured base head, remove ${env.blockedLabel}; the new exact head/base pair may be attempted once.`;
 }
 
-function applyBranchUpdateBlocked(pr: JsonObject, env: ReturnType<typeof envConfig>, fixture: JsonObject | null, reason: string): string {
-  const comment = branchUpdateBlockedComment(pr, env, reason);
-  if (!fixture) {
-    const github = githubOperations();
-    withEnabledDriverLock(env, () => github.commentPr(env.githubRepo, Number(pr.number || 0), comment));
-    withEnabledDriverLock(env, () => github.movePrLabels(env.githubRepo, Number(pr.number || 0), { remove: env.reviewingLabel, add: env.blockedLabel }));
+function applyPrTransition(
+  pr: JsonObject,
+  env: ReturnType<typeof envConfig>,
+  fixture: JsonObject | null,
+  stillApplicable: (livePlan: ReturnType<typeof planPrReviewerAction>, live: JsonObject) => boolean,
+  mutate: (github: ReturnType<typeof githubOperations>, live: JsonObject) => void,
+): boolean {
+  if (fixture) return true;
+  try {
+    return withEnabledDriverLock(env, () => {
+      const github = githubOperations();
+      const live = github.getPr(env.githubRepo, pr.number);
+      if (String(live.state || "").toUpperCase() !== "OPEN") throw new StaleLaunchError(`PR #${pr.number} is no longer open`);
+      assertSameLaunchTarget(pr, live, "pr");
+      const livePlan = planPrReviewerAction([live], liveAgents(), env);
+      if (!("pr" in livePlan) || Number(livePlan.pr.number) !== Number(pr.number) || !stillApplicable(livePlan, live)) {
+        throw new StaleLaunchError(`PR #${pr.number} transition changed`);
+      }
+      mutate(github, live);
+      return true;
+    });
+  } catch (error) {
+    if (isStaleLaunchError(error)) return false;
+    throw error;
   }
-  return comment;
+}
+
+function applyBranchUpdateBlocked(
+  pr: JsonObject,
+  env: ReturnType<typeof envConfig>,
+  fixture: JsonObject | null,
+  reason: string,
+  stillApplicable: (livePlan: ReturnType<typeof planPrReviewerAction>, live: JsonObject) => boolean,
+): { comment: string; applied: boolean } {
+  const comment = branchUpdateBlockedComment(pr, env, reason);
+  const applied = applyPrTransition(pr, env, fixture, stillApplicable, (github, live) => {
+    github.commentPr(env.githubRepo, Number(live.number || 0), comment);
+    github.movePrLabels(env.githubRepo, Number(live.number || 0), { remove: env.reviewingLabel, add: env.blockedLabel });
+  });
+  return { comment, applied };
 }
 
 function launchBranchUpdate(
@@ -399,24 +431,22 @@ gh issue edit <issueNumber> -R ${shellQuote(env.githubRepo)} --remove-label ${sh
 \`\`\``;
 }
 
-function applyDraftGate(pr: JsonObject, env: ReturnType<typeof envConfig>, fixture: JsonObject | null, comment: string): void {
-  if (fixture) return;
-  const number = String(pr.number);
-  const github = githubOperations();
-  withEnabledDriverLock(env, () => github.commentPr(env.githubRepo, number, comment));
-  withEnabledDriverLock(env, () => github.movePrLabels(env.githubRepo, number, { remove: env.reviewingLabel }, { check: false }));
-  withEnabledDriverLock(env, () => github.movePrLabels(env.githubRepo, number, { remove: env.reviewLabel }, { check: false }));
-  withEnabledDriverLock(env, () => github.movePrLabels(env.githubRepo, number, { add: env.blockedLabel }));
+function applyDraftGate(pr: JsonObject, env: ReturnType<typeof envConfig>, fixture: JsonObject | null, comment: string): boolean {
+  return applyPrTransition(pr, env, fixture, (livePlan) => livePlan.kind === "draft_gate", (github, live) => {
+    const number = String(live.number);
+    github.commentPr(env.githubRepo, number, comment);
+    github.movePrLabels(env.githubRepo, number, { remove: [env.reviewingLabel, env.reviewLabel], add: env.blockedLabel });
+  });
 }
 
-function applyExternalReviewRequest(pr: JsonObject, env: ReturnType<typeof envConfig>, fixture: JsonObject | null): void {
-  if (fixture) return;
-  const number = String(pr.number);
-  const head = String(pr.headRefOid || "");
-  const github = githubOperations();
-  withEnabledDriverLock(env, () => github.addPrReviewer(env.githubRepo, number, "@copilot", { check: false }));
-  withEnabledDriverLock(env, () => github.commentPr(env.githubRepo, number, `@coderabbitai review\n\n<!-- deadloop:external-review-request head=${head} -->`));
-  withEnabledDriverLock(env, () => github.movePrLabels(env.githubRepo, number, { remove: env.reviewingLabel }, { check: false }));
+function applyExternalReviewRequest(pr: JsonObject, env: ReturnType<typeof envConfig>, fixture: JsonObject | null): boolean {
+  return applyPrTransition(pr, env, fixture, (livePlan) => livePlan.kind === "external_review_request", (github, live) => {
+    const number = String(live.number);
+    const head = String(live.headRefOid || "");
+    github.addPrReviewer(env.githubRepo, number, "@copilot", { check: false });
+    github.commentPr(env.githubRepo, number, `@coderabbitai review\n\n<!-- deadloop:external-review-request head=${head} -->`);
+    github.movePrLabels(env.githubRepo, number, { remove: env.reviewingLabel }, { check: false });
+  });
 }
 
 function drive(fixturePath: string | undefined): DriverResult {
@@ -434,7 +464,11 @@ function drive(fixturePath: string | undefined): DriverResult {
 
   if (plan.kind === "draft_gate") {
     const comment = draftBlockedComment(plan.pr, env);
-    applyDraftGate(plan.pr, env, fixture, comment);
+    if (!applyDraftGate(plan.pr, env, fixture, comment)) {
+      return driverResult("skip", `PR #${plan.decision.number} changed before the draft gate; no workflow state was mutated`, {
+        driverAction: "draft_gate_stale", prNumber: plan.decision.number,
+      });
+    }
     return driverResult("done", `PR #${plan.decision.number} is draft; marked blocked`, {
       driverAction: "draft_blocked",
       prNumber: plan.decision.number,
@@ -451,7 +485,15 @@ function drive(fixturePath: string | undefined): DriverResult {
         branchUpdate: updateDecision,
       });
     }
-    const comment = applyBranchUpdateBlocked(plan.pr, env, fixture, String(updateDecision.reason || "unsafe branch-update state"));
+    const transition = applyBranchUpdateBlocked(
+      plan.pr, env, fixture, String(updateDecision.reason || "unsafe branch-update state"),
+      (_livePlan, live) => {
+        const liveDecision = branchUpdateDecision(live, env, null);
+        return liveDecision.action === "blocked" && liveDecision.reason === updateDecision.reason;
+      },
+    );
+    if (!transition.applied) return driverResult("skip", `PR #${plan.decision.number} changed before branch blocking`, { driverAction: "branch_update_block_stale" });
+    const { comment } = transition;
     return driverResult("done", `PR #${plan.decision.number} branch update is unsafe; marked blocked`, {
       driverAction: "branch_update_blocked",
       prNumber: plan.decision.number,
@@ -464,7 +506,12 @@ function drive(fixturePath: string | undefined): DriverResult {
     const headOid = String(updateDecision.headOid || plan.pr.headRefOid || "");
     const baseOid = String(updateDecision.baseOid || "");
     if (Boolean(plan.pr.isCrossRepository)) {
-      const comment = applyBranchUpdateBlocked(plan.pr, env, fixture, "the PR comes from another repository");
+      const transition = applyBranchUpdateBlocked(
+        plan.pr, env, fixture, "the PR comes from another repository",
+        (_livePlan, live) => Boolean(live.isCrossRepository) && branchUpdateDecision(live, env, null).action === "delegate_worker",
+      );
+      if (!transition.applied) return driverResult("skip", `PR #${plan.decision.number} changed before branch blocking`, { driverAction: "branch_update_block_stale" });
+      const { comment } = transition;
       return driverResult("done", `PR #${plan.decision.number} is cross-repository; marked blocked`, {
         driverAction: "branch_update_blocked",
         prNumber: plan.decision.number,
@@ -474,7 +521,16 @@ function drive(fixturePath: string | undefined): DriverResult {
     }
     const marker = renderBranchUpdateMarker(headOid, baseOid);
     if (branchUpdateAttemptExists(plan.pr.comments || [], headOid, baseOid)) {
-      const comment = applyBranchUpdateBlocked(plan.pr, env, fixture, "this exact PR head/base head pair already used its one attempt");
+      const transition = applyBranchUpdateBlocked(
+        plan.pr, env, fixture, "this exact PR head/base head pair already used its one attempt",
+        (_livePlan, live) => {
+          const liveDecision = branchUpdateDecision(live, env, null);
+          return liveDecision.action === "delegate_worker"
+            && branchUpdateAttemptExists(live.comments || [], String(liveDecision.headOid || ""), String(liveDecision.baseOid || ""));
+        },
+      );
+      if (!transition.applied) return driverResult("skip", `PR #${plan.decision.number} changed before branch blocking`, { driverAction: "branch_update_block_stale" });
+      const { comment } = transition;
       return driverResult("done", `PR #${plan.decision.number} exact branch-update pair was already attempted; marked blocked`, {
         driverAction: "branch_update_attempt_exhausted",
         prNumber: plan.decision.number,
@@ -520,7 +576,17 @@ function drive(fixturePath: string | undefined): DriverResult {
         });
       }
       const reason = `branch-update launch failed: ${error instanceof Error ? error.message : String(error)}`;
-      const comment = applyBranchUpdateBlocked(plan.pr, env, fixture, reason);
+      const transition = applyBranchUpdateBlocked(
+        plan.pr, env, fixture, reason,
+        (_livePlan, live) => {
+          const liveDecision = branchUpdateDecision(live, env, null);
+          return liveDecision.action === "delegate_worker"
+            && String(liveDecision.headOid || "") === headOid
+            && String(liveDecision.baseOid || "") === baseOid;
+        },
+      );
+      if (!transition.applied) return driverResult("skip", `PR #${plan.decision.number} changed after branch-update launch failed`, { driverAction: "branch_update_block_stale" });
+      const { comment } = transition;
       return driverResult("done", `PR #${plan.decision.number} branch-update launch failed; marked blocked`, {
         driverAction: "branch_update_launch_failed",
         prNumber: plan.decision.number,
@@ -531,7 +597,11 @@ function drive(fixturePath: string | undefined): DriverResult {
   }
 
   if (plan.kind === "external_review_request") {
-    applyExternalReviewRequest(plan.pr, env, fixture);
+    if (!applyExternalReviewRequest(plan.pr, env, fixture)) {
+      return driverResult("skip", `PR #${plan.decision.number} changed before external review request`, {
+        driverAction: "external_review_request_stale", prNumber: plan.decision.number,
+      });
+    }
     return driverResult("done", `Requested external review for PR #${plan.decision.number}`, {
       driverAction: "external_review_requested",
       prNumber: plan.decision.number,

@@ -75,10 +75,9 @@ export function upsertEnabledProject(
         ...(previous || {
           ...firstEnable,
           firstStartPending: true,
-          // The effective value during the mandatory first start is always false.
-          // Recording that enforced value lets a true setting be acknowledged on
-          // the first observation after the safe start, without a false rewrite.
-          lastObservedAutoMerge: false,
+          // Preserve the configured value seen at enablement. A pre-existing true
+          // must not look like a post-enable choice on the next scheduler tick.
+          lastObservedAutoMerge: firstEnable.firstEnableAutoMerge,
           autoMergeAcknowledged: false,
         }),
         repoPath,
@@ -106,7 +105,7 @@ export function observeAutoMerge(state: EnablementState, identity: ProjectIdenti
         && project.lastObservedAutoMerge === false
         && autoMerge === true
       );
-      const lastObservedAutoMerge = project.firstStartPending ? false : autoMerge;
+      const lastObservedAutoMerge = project.firstStartPending ? project.lastObservedAutoMerge : autoMerge;
       return { ...project, lastObservedAutoMerge, autoMergeAcknowledged };
     }),
   };

@@ -73,9 +73,10 @@ function assertLocallyEnabled(project) {
 function assertEnabled(project) {
   const enabled = assertLocallyEnabled(project);
   const identities = originIdentities(project.repoPath);
+  const mutationIdentities = [...new Set([enabled.githubRepo, ...identities])];
   if (
     identities.length === 0
-    || identities.some((identity) => githubRepositoryId(identity) !== enabled.githubRepositoryId)
+    || mutationIdentities.some((identity) => githubRepositoryId(identity) !== enabled.githubRepositoryId)
   ) throw new Error("deadloop is disabled for this repository");
   return enabled;
 }

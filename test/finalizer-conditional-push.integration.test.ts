@@ -22,6 +22,7 @@ function fixture() {
   const remote = path.join(root, "origin.git");
   mkdirSync(repo);
   git(repo, ["init", "--quiet"]);
+  git(repo, ["checkout", "--quiet", "-b", branch]);
   git(repo, ["config", "user.email", "test@example.com"]);
   git(repo, ["config", "user.name", "Test"]);
   writeFileSync(path.join(repo, "file.txt"), "root\n");

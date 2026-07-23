@@ -335,13 +335,15 @@ describe("enablement command integration", () => {
     expect(extension.messages.at(-1)).toContain("deadloop enabled");
   });
 
-  it("acknowledges an explicit true auto-merge setting after the safe first start", async () => {
+  it("acknowledges an explicit post-enable change from false to true", async () => {
     const { root, repoPath } = fixtureRepository();
     writeConfig(root, repoPath, { autoMerge: true });
     const extension = await loadExtension(root);
     vi.useFakeTimers();
     await invoke(extension.commands.get("deadloop-enable")!, repoPath);
     await vi.advanceTimersByTimeAsync(3_000);
+    writeConfig(root, repoPath, { autoMerge: false });
+    await invoke(extension.commands.get("deadloop-enable")!, repoPath);
     writeConfig(root, repoPath, { autoMerge: true });
 
     await invoke(extension.commands.get("deadloop-enable")!, repoPath);
@@ -783,6 +785,8 @@ describe("enablement command integration", () => {
     vi.useFakeTimers();
     await invoke(extension.commands.get("deadloop-enable")!, repoPath);
     await vi.advanceTimersByTimeAsync(3_000);
+    writeConfig(root, repoPath, { autoMerge: false });
+    await invoke(extension.commands.get("deadloop-enable")!, repoPath);
     writeConfig(root, repoPath, { autoMerge: true });
     await invoke(extension.commands.get("deadloop-enable")!, repoPath);
     await invoke(extension.commands.get("deadloop-disable")!, repoPath);

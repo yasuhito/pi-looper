@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 // Validate and push a review repair. This is the repair worker's only push path.
-// It re-checks the open PR head, then performs an exact-head leased push of
+// It re-checks the open PR head, then performs a normal fast-forward push of
 // the immutable repair commit.
 
 const { spawnSync } = require("node:child_process") as typeof import("node:child_process");
 const path = require("node:path") as typeof import("node:path");
 const { MAX_GUARDED_OPERATION_MS, withEnabledProjectLock } = require("../../../src/enabled-operation.cjs");
 const { resolveVerifiedPushDestination } = require("./verified-push-destination.ts");
+const { assertAuthorizedSource } = require("./guarded-push.ts");
 
 type JsonObject = Record<string, any>;
 type FinalizeArgs = {
@@ -56,17 +57,10 @@ function pushConditionally(
   if (checked(ops, ["git", "-C", repo, "rev-parse", "HEAD"], MAX_GUARDED_OPERATION_MS).toLowerCase() !== candidateOid.toLowerCase()) {
     throw new Error("repair HEAD changed immediately before push");
   }
+  const remoteBeforePush = checked(ops, ["git", "ls-remote", destination, ref], MAX_GUARDED_OPERATION_MS).split(/\s+/)[0] || "";
+  if (remoteBeforePush.toLowerCase() !== expectedHead.toLowerCase()) return false;
   const push = ops.run(
-    [
-      "git",
-      "-C",
-      repo,
-      "push",
-      "--porcelain",
-      `--force-with-lease=${ref}:${expectedHead}`,
-      destination,
-      `${candidateOid}:${ref}`,
-    ],
+    ["git", "-C", repo, "push", "--porcelain", destination, `${candidateOid}:${ref}`],
     MAX_GUARDED_OPERATION_MS,
   );
   if (push.status === 0) return true;
@@ -113,6 +107,11 @@ function finalizeReviewRepair(args: FinalizeArgs, ops: FinalizeOps = { run: defa
 
   const project = { repoPath: args.projectRepo, githubRepo: args.githubRepo, stateDir: args.stateDir, enabledAt: args.enabledAt };
   const guardAndPush = (enabled: EnabledProject) => {
+    assertAuthorizedSource(
+      { projectRepo: args.projectRepo, worktree: args.repo, githubRepo: args.githubRepo, stateDir: args.stateDir, enabledAt: args.enabledAt, remote: args.remote, branch: args.branch },
+      enabled,
+      ops,
+    );
     const pr = JSON.parse(
       checked(ops, [
         "gh",
