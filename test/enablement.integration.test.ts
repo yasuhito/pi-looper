@@ -402,6 +402,44 @@ describe("enablement command integration", () => {
     expect(extension.ghCommands.filter((args) => args[0] === "label" && args[1] === "create").map((args) => args[2])).toEqual(["ready-for-agent"]);
   });
 
+  it("does not recreate a label added by a concurrent enable", async () => {
+    const { root, repoPath } = fixtureRepository();
+    writeConfig(root, repoPath);
+    const labels: { name: string }[] = [];
+    let releaseFirstCreate!: () => void;
+    let firstCreateStarted!: () => void;
+    let secondLookupStarted!: () => void;
+    const firstCreate = new Promise<void>((resolve) => { firstCreateStarted = resolve; });
+    const secondLookup = new Promise<void>((resolve) => { secondLookupStarted = resolve; });
+    const holdFirstCreate = new Promise<void>((resolve) => { releaseFirstCreate = resolve; });
+    let readyLabelLookups = 0;
+    let blockedFirstCreate = false;
+    const extension = await loadExtension(root, {
+      labels,
+      beforeLabelLookup: async (name) => {
+        if (name === "ready-for-agent" && ++readyLabelLookups === 2) secondLookupStarted();
+      },
+      beforeLabelCreate: async (name) => {
+        if (name === "ready-for-agent" && !blockedFirstCreate) {
+          blockedFirstCreate = true;
+          firstCreateStarted();
+          await holdFirstCreate;
+        }
+        if (labels.some((label) => label.name === name)) throw new Error(`label already exists: ${name}`);
+        labels.push({ name });
+      },
+    });
+    const firstEnable = invoke(extension.commands.get("deadloop-enable")!, repoPath);
+    await firstCreate;
+    const secondEnable = invoke(extension.commands.get("deadloop-enable")!, repoPath);
+    await secondLookup;
+    releaseFirstCreate();
+
+    await Promise.all([firstEnable, secondEnable]);
+
+    expect(extension.ghCommands.filter((args) => args[0] === "label" && args[1] === "create" && args[2] === "ready-for-agent")).toHaveLength(1);
+  });
+
   it("does not let a failed enable revoke a later successful concurrent enable", async () => {
     const { root, repoPath } = fixtureRepository();
     writeConfig(root, repoPath);

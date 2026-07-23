@@ -458,9 +458,9 @@ function loadState() {
   return loadAutomationState(STATE_PATH);
 }
 
-function saveState(state) {
+function saveState(state, ownedAutomationKeys) {
   try {
-    return saveAutomationState(STATE_PATH, state);
+    return saveAutomationState(STATE_PATH, state, ownedAutomationKeys);
   } catch (error) {
     console.warn(`[${EXTENSION_NAME}] failed to save state:`, error?.message || error);
     return state;
@@ -923,11 +923,17 @@ async function prepareGithub(pi, identity, repoPath, enableAttemptToken) {
       if (!ownsEnableAttempt(repoPath, enableAttemptToken)) {
         throw new Error("enablement was revoked while preflight was running");
       }
+      const lockedLookup = await pi.exec("gh", ["api", "--silent", `repos/${identity.githubRepo}/labels/${encodeURIComponent(name)}`], { timeout: 15_000 });
+      if (lockedLookup.code === 0) return;
+      if (!/HTTP 404\b/.test(`${lockedLookup.stderr || ""}\n${lockedLookup.stdout || ""}`)) {
+        throw new Error((lockedLookup.stderr || lockedLookup.stdout || `label lookup failed for ${name}`).trim());
+      }
       await commandExec(pi, "gh", ["label", "create", name, "-R", identity.githubRepo, "--color", color]);
     });
   }
 }
 function automationRunnerDeps(pi, ctx, project, isCurrentSchedulerRun = () => true) {
+  const ownedAutomationKeys = project.automations.map((automation) => automationStateKey(project, automation));
   return {
     isEnabled: () => isCurrentSchedulerRun() && isProjectEnabled(project),
     isIdle: typeof ctx.isIdle === "function" ? () => ctx.isIdle() : undefined,
@@ -945,7 +951,7 @@ function automationRunnerDeps(pi, ctx, project, isCurrentSchedulerRun = () => tr
     runPrecheck: async (precheckProject, precheckAutomation, precheckFile) =>
       await runAutomationScript(pi, precheckProject, precheckAutomation, precheckFile),
     saveState: (state) => {
-      if (isCurrentSchedulerRun()) saveState(state);
+      if (isCurrentSchedulerRun()) saveState(state, ownedAutomationKeys);
     },
     sendUserMessage: (prompt) => {
       if (isCurrentSchedulerRun()) pi.sendUserMessage(prompt);
@@ -1057,7 +1063,7 @@ export default function (pi) {
         const entry = state.automations[automationStateKey(project, automation)] || {};
         state.automations[automationStateKey(project, automation)] = entry;
         if (deliverPendingDriverHandoff(entry, state, automation.name, deps)) {
-          if (active === schedulerRun && ownsLock && !stopRequested) saveState(state);
+          if (active === schedulerRun && ownsLock && !stopRequested) deps.saveState(state);
           return;
         }
       }
@@ -1075,7 +1081,7 @@ export default function (pi) {
         break;
       }
 
-      if (active === schedulerRun && ownsLock && !stopRequested) saveState(state);
+      if (active === schedulerRun && ownsLock && !stopRequested) deps.saveState(state);
     } finally {
       running = false;
     }

@@ -26,7 +26,7 @@ function writeJsonFile(file, value) {
   fs.renameSync(tmp, file);
 }
 
-function saveAutomationState(statePath, state) {
+function saveAutomationState(statePath, state, ownedAutomationKeys) {
   fs.mkdirSync(path.dirname(statePath), { recursive: true });
   const lockPath = `${statePath}.lock`;
   const lock = acquireLockSync(lockPath, {
@@ -36,13 +36,15 @@ function saveAutomationState(statePath, state) {
   });
   try {
     const current = loadAutomationState(statePath);
+    const requested = normalizeAutomationState(state);
+    const automations = { ...current.automations };
+    for (const key of ownedAutomationKeys) {
+      if (Object.hasOwn(requested.automations, key)) automations[key] = requested.automations[key];
+    }
     const merged = {
       ...current,
       ...state,
-      automations: {
-        ...current.automations,
-        ...normalizeAutomationState(state).automations,
-      },
+      automations,
     };
     writeJsonFile(statePath, merged);
     return merged;

@@ -34,7 +34,10 @@ describe("shared automation state", () => {
     const goPath = path.join(root, "go");
     const helperPath = path.join(root, "save.cjs");
     const modulePath = path.resolve("src/automation-state.cjs");
-    fs.writeFileSync(statePath, JSON.stringify({ automations: {} }));
+    fs.writeFileSync(statePath, JSON.stringify({ automations: {
+      "repo-a:auto": { lastResult: "old-a" },
+      "repo-b:auto": { lastResult: "old-b" },
+    } }));
     fs.writeFileSync(helperPath, `const fs = require("node:fs");
 const { loadAutomationState, saveAutomationState } = require(${JSON.stringify(modulePath)});
 const [statePath, readyPath, goPath, key] = process.argv.slice(2);
@@ -42,7 +45,7 @@ const state = loadAutomationState(statePath);
 state.automations[key] = { lastResult: key };
 fs.writeFileSync(readyPath, "ready");
 while (!fs.existsSync(goPath)) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-saveAutomationState(statePath, state);
+saveAutomationState(statePath, state, [key]);
 `);
     const readyA = path.join(root, "a-ready");
     const readyB = path.join(root, "b-ready");
@@ -54,10 +57,10 @@ saveAutomationState(statePath, state);
       fs.writeFileSync(goPath, "go");
       await Promise.all([waitForExit(childA), waitForExit(childB)]);
 
-      expect(Object.keys(JSON.parse(fs.readFileSync(statePath, "utf8")).automations).sort()).toEqual([
-        "repo-a:auto",
-        "repo-b:auto",
-      ]);
+      expect(JSON.parse(fs.readFileSync(statePath, "utf8")).automations).toEqual({
+        "repo-a:auto": { lastResult: "repo-a:auto" },
+        "repo-b:auto": { lastResult: "repo-b:auto" },
+      });
     } finally {
       childA.kill();
       childB.kill();
