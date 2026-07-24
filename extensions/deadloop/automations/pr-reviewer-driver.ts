@@ -552,6 +552,7 @@ function drive(fixturePath: string | undefined): DriverResult {
       prNumber: plan.decision.number,
       comment,
       githubEffects,
+      ...(fixture ? { testAdapterEffects: fixtureEffects(fixture) } : {}),
     });
   }
 

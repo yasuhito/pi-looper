@@ -88,7 +88,7 @@
 
 * 前提 下書きの pull request がある
 * もし deadloop がレビュー対象を選んで処理する
-* ならば pull request は停止中になる
+* ならば レビュー担当は起動されない
 
 ## シナリオ: 下書きの pull request には復旧手順を示す
 

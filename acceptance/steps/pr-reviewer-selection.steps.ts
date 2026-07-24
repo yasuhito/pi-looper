@@ -14,7 +14,12 @@ type GithubEffect = {
   reviewer?: string;
   move?: { add?: string | string[]; remove?: string | string[] };
 };
-type DriverResult = { driverAction?: string; comment?: string; githubEffects?: GithubEffect[] };
+type DriverResult = {
+  driverAction?: string;
+  comment?: string;
+  githubEffects?: GithubEffect[];
+  testAdapterEffects?: { herdrStarts?: unknown[] };
+};
 type SelectionWorld = {
   fixtureName?: string;
   agentsFixtureName?: string;
@@ -216,13 +221,8 @@ Then("deadloop は通常レビューへ戻す", function (this: SelectionWorld) 
   assert.equal(this.driverResult?.driverAction, "reviewer_monitor_request");
 });
 
-Then("pull request は停止中になる", function (this: SelectionWorld) {
-  assert.equal(
-    this.driverResult?.githubEffects?.some(
-      (effect) => effect.operation === "move_pr_labels" && [effect.move?.add ?? []].flat().includes("agent:blocked"),
-    ),
-    true,
-  );
+Then("レビュー担当は起動されない", function (this: SelectionWorld) {
+  assert.deepEqual(this.driverResult?.testAdapterEffects?.herdrStarts, []);
 });
 
 Then("pull request の復旧手順を示す", function (this: SelectionWorld) {
