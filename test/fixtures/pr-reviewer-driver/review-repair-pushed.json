@@ -2,11 +2,11 @@
   "prs": [
     {
       "number": 31,
-      "title": "Conflicting PR",
+      "title": "Repaired PR",
       "url": "https://github.com/owner/repo/pull/31",
       "updatedAt": "2026-07-08T00:00:00Z",
       "headRefName": "agent/issue-31",
-      "headRefOid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "headRefOid": "cccccccccccccccccccccccccccccccccccccccc",
       "isCrossRepository": false,
       "isDraft": false,
       "labels": [
@@ -18,19 +18,18 @@
         }
       ],
       "statusCheckRollup": [],
-      "comments": [],
+      "comments": [
+        {
+          "body": "<!-- deadloop:review-repair-attempt key=c4ddc9641edec4e267b2 head=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa review=0621b60e5337fe8290d8 -->"
+        }
+      ],
       "reviewRequests": [],
-      "mergeStateStatus": "CONFLICTING"
+      "mergeStateStatus": "CLEAN"
     }
   ],
   "agents": {
     "result": {
       "agents": []
     }
-  },
-  "branchUpdate": {
-    "action": "delegate_worker",
-    "reason": "merge_conflict",
-    "baseOid": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
   }
 }
