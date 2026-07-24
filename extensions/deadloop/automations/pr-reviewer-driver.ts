@@ -26,6 +26,17 @@ const { createGithubOperations } = require("../../../src/github-operations.ts");
 
 import type { DriverResult, JsonObject } from "../../../src/automation-driver-kit";
 
+type LabelMove = { remove?: string | string[]; add?: string | string[] };
+type GithubEffect =
+  | { operation: "add_pr_reviewer"; repo: string; prNumber: string; reviewer: string }
+  | { operation: "comment_pr"; repo: string; prNumber: string; body: string }
+  | { operation: "move_pr_labels"; repo: string; prNumber: string; move: LabelMove };
+type PrMutationOperations = {
+  addPrReviewer(repo: string, prNumber: string | number, reviewer: string, options?: { check?: boolean }): void;
+  commentPr(repo: string, prNumber: string | number, body: string): void;
+  movePrLabels(repo: string, prNumber: string | number, move: LabelMove, options?: { check?: boolean }): void;
+};
+
 const SCRIPT_DIR = __dirname;
 const commandRunner = createCommandRunner();
 const { runText } = commandRunner;
@@ -36,6 +47,21 @@ function herdrRunner() {
 
 function githubOperations() {
   return createGithubOperations(commandRunner);
+}
+
+function prMutationOperations(fixture: JsonObject | null, effects: GithubEffect[]): PrMutationOperations {
+  if (!fixture) return githubOperations();
+  return {
+    addPrReviewer(repo, prNumber, reviewer) {
+      effects.push({ operation: "add_pr_reviewer", repo, prNumber: String(prNumber), reviewer });
+    },
+    commentPr(repo, prNumber, body) {
+      effects.push({ operation: "comment_pr", repo, prNumber: String(prNumber), body });
+    },
+    movePrLabels(repo, prNumber, move) {
+      effects.push({ operation: "move_pr_labels", repo, prNumber: String(prNumber), move });
+    },
+  };
 }
 
 function envConfig() {
@@ -359,24 +385,35 @@ gh issue edit <issueNumber> -R ${shellQuote(env.githubRepo)} --remove-label ${sh
 \`\`\``;
 }
 
-function applyDraftGate(pr: JsonObject, env: ReturnType<typeof envConfig>, fixture: JsonObject | null, comment: string): void {
-  if (fixture) return;
+function applyDraftGate(
+  pr: JsonObject,
+  env: ReturnType<typeof envConfig>,
+  fixture: JsonObject | null,
+  comment: string,
+): GithubEffect[] {
+  const effects: GithubEffect[] = [];
   const number = String(pr.number);
-  const github = githubOperations();
+  const github = prMutationOperations(fixture, effects);
   github.commentPr(env.githubRepo, number, comment);
   github.movePrLabels(env.githubRepo, number, { remove: env.reviewingLabel }, { check: false });
   github.movePrLabels(env.githubRepo, number, { remove: env.reviewLabel }, { check: false });
   github.movePrLabels(env.githubRepo, number, { add: env.blockedLabel });
+  return effects;
 }
 
-function applyExternalReviewRequest(pr: JsonObject, env: ReturnType<typeof envConfig>, fixture: JsonObject | null): void {
-  if (fixture) return;
+function applyExternalReviewRequest(
+  pr: JsonObject,
+  env: ReturnType<typeof envConfig>,
+  fixture: JsonObject | null,
+): GithubEffect[] {
+  const effects: GithubEffect[] = [];
   const number = String(pr.number);
   const head = String(pr.headRefOid || "");
-  const github = githubOperations();
+  const github = prMutationOperations(fixture, effects);
   github.addPrReviewer(env.githubRepo, number, "@copilot", { check: false });
   github.commentPr(env.githubRepo, number, `@coderabbitai review\n\n<!-- deadloop:external-review-request head=${head} -->`);
   github.movePrLabels(env.githubRepo, number, { remove: env.reviewingLabel }, { check: false });
+  return effects;
 }
 
 function drive(fixturePath: string | undefined): DriverResult {
@@ -394,11 +431,12 @@ function drive(fixturePath: string | undefined): DriverResult {
 
   if (plan.kind === "draft_gate") {
     const comment = draftBlockedComment(plan.pr, env);
-    applyDraftGate(plan.pr, env, fixture, comment);
+    const githubEffects = applyDraftGate(plan.pr, env, fixture, comment);
     return driverResult("done", `PR #${plan.decision.number} is draft; marked blocked`, {
       driverAction: "draft_blocked",
       prNumber: plan.decision.number,
       comment,
+      githubEffects,
     });
   }
 
@@ -478,11 +516,12 @@ function drive(fixturePath: string | undefined): DriverResult {
   }
 
   if (plan.kind === "external_review_request") {
-    applyExternalReviewRequest(plan.pr, env, fixture);
+    const githubEffects = applyExternalReviewRequest(plan.pr, env, fixture);
     return driverResult("done", `Requested external review for PR #${plan.decision.number}`, {
       driverAction: "external_review_requested",
       prNumber: plan.decision.number,
       gate: plan.gate,
+      githubEffects,
     });
   }
   if (plan.kind === "external_review_wait") {

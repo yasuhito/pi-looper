@@ -9,6 +9,12 @@ import { Given, Then, When } from "@cucumber/cucumber";
 const { defaultDecisionConfig, selectPrForReview, workingReviewerPrNumbers } = require("../../extensions/deadloop/automations/pr-reviewer-decisions.ts");
 
 type PullRequest = Record<string, unknown>;
+type GithubEffect = {
+  operation?: string;
+  reviewer?: string;
+  move?: { add?: string | string[]; remove?: string | string[] };
+};
+type DriverResult = { driverAction?: string; comment?: string; githubEffects?: GithubEffect[] };
 type SelectionWorld = {
   fixtureName?: string;
   agentsFixtureName?: string;
@@ -16,7 +22,7 @@ type SelectionWorld = {
   externalReviewEnabled?: boolean;
   driverFixtureName?: string;
   decision?: { selected?: boolean; number?: number };
-  driverResult?: { driverAction?: string; comment?: string };
+  driverResult?: DriverResult;
   prs?: PullRequest[];
   agents?: Record<string, unknown>;
 };
@@ -127,11 +133,11 @@ When("deadloop が外部レビューの扱いを決める", function (this: Sele
   this.driverResult = runDriver(this.driverFixtureName, { DEADLOOP_EXTERNAL_REVIEW_ENABLED: this.externalReviewEnabled ? "1" : "0" });
 });
 
-function runDriver(fixtureName: string, extraEnv: Record<string, string> = {}): { driverAction?: string; comment?: string } {
+function runDriver(fixtureName: string, extraEnv: Record<string, string> = {}): DriverResult {
   return runDriverPath(`test/fixtures/pr-reviewer-driver/${fixtureName}`, extraEnv);
 }
 
-function runDriverPath(fixturePath: string, extraEnv: Record<string, string> = {}): { driverAction?: string; comment?: string } {
+function runDriverPath(fixturePath: string, extraEnv: Record<string, string> = {}): DriverResult {
   const result = spawnSync("node", ["extensions/deadloop/automations/pr-reviewer-driver.ts", "--fixture", fixturePath], {
     cwd: process.cwd(),
     encoding: "utf8",
@@ -148,7 +154,7 @@ function runDriverPath(fixturePath: string, extraEnv: Record<string, string> = {
     },
   });
   if (result.status !== 0) throw new Error(result.stderr || result.stdout);
-  return JSON.parse(result.stdout) as { driverAction?: string; comment?: string };
+  return JSON.parse(result.stdout) as DriverResult;
 }
 
 When("deadloop がレビューを開始しようとする", function (this: SelectionWorld) {
@@ -194,7 +200,12 @@ Then("レビュー対象は選ばれない", function (this: SelectionWorld) {
 });
 
 Then("deadloop は外部レビューを依頼する", function (this: SelectionWorld) {
-  assert.equal(this.driverResult?.driverAction, "external_review_requested");
+  assert.equal(
+    this.driverResult?.githubEffects?.some(
+      (effect) => effect.operation === "add_pr_reviewer" && effect.reviewer === "@copilot",
+    ),
+    true,
+  );
 });
 
 Then("deadloop は外部レビューを待機する", function (this: SelectionWorld) {
@@ -206,7 +217,12 @@ Then("deadloop は通常レビューへ戻す", function (this: SelectionWorld) 
 });
 
 Then("pull request は停止中になる", function (this: SelectionWorld) {
-  assert.equal(this.driverResult?.driverAction, "draft_blocked");
+  assert.equal(
+    this.driverResult?.githubEffects?.some(
+      (effect) => effect.operation === "move_pr_labels" && [effect.move?.add ?? []].flat().includes("agent:blocked"),
+    ),
+    true,
+  );
 });
 
 Then("pull request の復旧手順を示す", function (this: SelectionWorld) {
