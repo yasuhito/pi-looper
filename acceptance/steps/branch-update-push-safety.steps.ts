@@ -20,7 +20,7 @@ const branch = "agent/issue-31";
 type SafetyWorld = {
   actualHead?: string;
   baseRef?: string;
-  branchUpdateOperations?: string[];
+  branchUpdateOutcome?: string;
   branchUpdateRoot?: string;
   changeHeadAfterChecks?: boolean;
   crossRepository?: boolean;
@@ -87,15 +87,6 @@ function pushCommands(world: SafetyWorld): string[][] {
   return (world.commands ?? []).filter((command) => command[0] === "git" && command.includes("push"));
 }
 
-function pushedRefs(world: SafetyWorld): string[] {
-  return pushCommands(world).flatMap((command) =>
-    command
-      .slice(command.indexOf("origin") + 1)
-      .filter((argument) => !argument.startsWith("-"))
-      .map((argument) => argument.replace(/^\+/, "")),
-  );
-}
-
 function forcePushOptions(world: SafetyWorld): string[] {
   return pushCommands(world).flatMap((command) =>
     command.filter(
@@ -150,7 +141,34 @@ When("deadloop が branch 更新を完了しようとする", function (this: Sa
   if (this.dirtyWorktree) {
     if (!this.branchUpdateRoot || !this.headRef || !this.baseRef) throw new Error("dirty worktree precondition is missing");
     const decision = decideBranchUpdateLive(this.branchUpdateRoot, this.headRef, this.baseRef, this.headRef);
-    this.branchUpdateOperations = [decision.action];
+    const fixtureFile = path.join(this.branchUpdateRoot, "driver-fixture.json");
+    fs.writeFileSync(
+      fixtureFile,
+      JSON.stringify({
+        prs: [
+          {
+            number: 31,
+            headRefName: branch,
+            headRefOid: this.headRef,
+            isCrossRepository: false,
+            isDraft: false,
+            labels: [{ name: "agent:review" }],
+            statusCheckRollup: [],
+            comments: [],
+            reviewRequests: [],
+            mergeStateStatus: "CONFLICTING",
+          },
+        ],
+        agents: { result: { agents: [] } },
+        branchUpdate: { ...decision, baseOid: this.baseRef },
+      }),
+    );
+    const result = spawnSync("node", ["extensions/deadloop/automations/pr-reviewer-driver.ts", "--fixture", fixtureFile], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+    });
+    if (result.status !== 0) throw new Error(result.stderr || result.stdout || "PR reviewer driver failed");
+    this.branchUpdateOutcome = JSON.parse(result.stdout).driverAction;
     return;
   }
   finalize(this);
@@ -161,7 +179,7 @@ Then("branch への push は行われない", function (this: SafetyWorld) {
 });
 
 Then("branch 更新処理は開始されない", function (this: SafetyWorld) {
-  assert.deepEqual(this.branchUpdateOperations, ["blocked"]);
+  assert.equal(this.branchUpdateOutcome, "branch_update_blocked");
 });
 
 Then("完了結果は古い head として観測される", function (this: SafetyWorld) {
@@ -216,7 +234,9 @@ Then("作業エージェントは起動されない", function (this: SafetyWorl
 });
 
 Then("選択された branch だけが push の対象になる", function (this: SafetyWorld) {
-  assert.deepEqual(pushedRefs(this), [`HEAD:refs/heads/${branch}`]);
+  assert.deepEqual(pushCommands(this), [
+    ["git", "-C", "/worktree", "push", "--porcelain", "origin", `HEAD:refs/heads/${branch}`],
+  ]);
 });
 
 Then("branch は強制せずに push される", function (this: SafetyWorld) {
