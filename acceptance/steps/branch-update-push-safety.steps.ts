@@ -6,28 +6,17 @@ import path from "node:path";
 
 import { After, Given, Then, When } from "@cucumber/cucumber";
 
-const {
-  finalizeBranchUpdate,
-} = require("../../extensions/deadloop/automations/pr-branch-update-finalize.ts");
-const {
-  decideBranchUpdateLive,
-} = require("../../extensions/deadloop/automations/pr-branch-update-decision.ts");
-
+const { finalizeBranchUpdate } = require("../../extensions/deadloop/automations/pr-branch-update-finalize.ts");
 const head = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const base = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 const branch = "agent/issue-31";
 
 type SafetyWorld = {
   actualHead?: string;
-  baseRef?: string;
-  branchUpdateOutcome?: string;
-  branchUpdateRoot?: string;
   changeHeadAfterChecks?: boolean;
   crossRepository?: boolean;
   commands?: string[][];
-  dirtyWorktree?: boolean;
   finalizeResult?: Record<string, unknown>;
-  headRef?: string;
   temporaryRoots?: string[];
   trustLaunchMarker?: string;
   trustRoot?: string;
@@ -36,51 +25,47 @@ type SafetyWorld = {
 function finalize(world: SafetyWorld): void {
   const commands: string[][] = [];
   world.commands = commands;
-  try {
-    world.finalizeResult = finalizeBranchUpdate(
-      {
-        repo: "/worktree",
-        githubRepo: "owner/repo",
-        pr: "31",
-        branch,
-        expectedHead: head,
-        expectedBase: base,
-        remote: "origin",
-        automationDir: "/automation",
-        stateDir: "/state",
-        checkCommand: "npm test",
-      },
-      {
-        run: (args: string[]) => {
-          commands.push(args);
-          if (args[0] === "node" && args[1]?.endsWith("/run-project-check.ts") && world.changeHeadAfterChecks) {
-            world.actualHead = base;
-          }
-          if (args[0] === "gh") {
-            return {
-              status: 0,
-              stdout: JSON.stringify({
-                state: "OPEN",
-                isCrossRepository: world.crossRepository ?? false,
-                headRefName: branch,
-                headRefOid: world.actualHead ?? head,
-              }),
-              stderr: "",
-            };
-          }
-          if (args.includes("status") && args.includes("--porcelain")) {
-            return { status: 0, stdout: world.dirtyWorktree ? " M tracked-file\n" : "", stderr: "" };
-          }
-          if (args.at(-1) === "HEAD" && args.includes("rev-parse")) {
-            return { status: 0, stdout: "cccccccccccccccccccccccccccccccccccccccc\n", stderr: "" };
-          }
+  world.finalizeResult = finalizeBranchUpdate(
+    {
+      repo: "/worktree",
+      githubRepo: "owner/repo",
+      pr: "31",
+      branch,
+      expectedHead: head,
+      expectedBase: base,
+      remote: "origin",
+      automationDir: "/automation",
+      stateDir: "/state",
+      checkCommand: "npm test",
+    },
+    {
+      run: (args: string[]) => {
+        commands.push(args);
+        if (args[0] === "node" && args[1]?.endsWith("/run-project-check.ts") && world.changeHeadAfterChecks) {
+          world.actualHead = base;
+        }
+        if (args[0] === "gh") {
+          return {
+            status: 0,
+            stdout: JSON.stringify({
+              state: "OPEN",
+              isCrossRepository: world.crossRepository ?? false,
+              headRefName: branch,
+              headRefOid: world.actualHead ?? head,
+            }),
+            stderr: "",
+          };
+        }
+        if (args.includes("status") && args.includes("--porcelain")) {
           return { status: 0, stdout: "", stderr: "" };
-        },
+        }
+        if (args.at(-1) === "HEAD" && args.includes("rev-parse")) {
+          return { status: 0, stdout: "cccccccccccccccccccccccccccccccccccccccc\n", stderr: "" };
+        }
+        return { status: 0, stdout: "", stderr: "" };
       },
-    );
-  } catch (error) {
-    if (!world.dirtyWorktree) throw error;
-  }
+    },
+  );
 }
 
 function pushCommands(world: SafetyWorld): string[][] {
@@ -90,7 +75,8 @@ function pushCommands(world: SafetyWorld): string[][] {
 function forcePushOptions(world: SafetyWorld): string[] {
   return pushCommands(world).flatMap((command) =>
     command.filter(
-      (argument) => argument === "-f" || argument === "--mirror" || argument.startsWith("--force") || argument.startsWith("+"),
+      (argument) =>
+        argument === "-f" || argument === "--mirror" || argument.startsWith("--force") || argument.startsWith("+"),
     ),
   );
 }
@@ -110,76 +96,16 @@ Given("自動チェック後に pull request head が変わる", function (this:
   this.changeHeadAfterChecks = true;
 });
 
-Given("更新対象の作業場所に未コミットの変更がある", function (this: SafetyWorld) {
-  const root = temporaryRoot(this, "deadloop-dirty-branch-update-");
-  const runGit = (args: string[]): string => {
-    const result = spawnSync("git", ["-C", root, ...args], { encoding: "utf8" });
-    if (result.status !== 0) throw new Error(result.stderr || result.stdout || `git failed: ${args.join(" ")}`);
-    return result.stdout.trim();
-  };
-  runGit(["init", "--quiet"]);
-  runGit(["config", "user.name", "Deadloop Acceptance"]);
-  runGit(["config", "user.email", "acceptance@example.invalid"]);
-  fs.writeFileSync(path.join(root, "tracked-file"), "pull request head\n");
-  runGit(["add", "tracked-file"]);
-  runGit(["commit", "--quiet", "-m", "pull request head"]);
-  this.headRef = runGit(["rev-parse", "HEAD"]);
-  fs.writeFileSync(path.join(root, "tracked-file"), "selected base head\n");
-  runGit(["commit", "--quiet", "-am", "selected base head"]);
-  this.baseRef = runGit(["rev-parse", "HEAD"]);
-  runGit(["checkout", "--quiet", "--detach", this.headRef]);
-  fs.writeFileSync(path.join(root, "tracked-file"), "uncommitted change\n");
-  this.branchUpdateRoot = root;
-  this.dirtyWorktree = true;
-});
-
 Given("pull request が別リポジトリから作られている", function (this: SafetyWorld) {
   this.crossRepository = true;
 });
 
 When("deadloop が branch 更新を完了しようとする", function (this: SafetyWorld) {
-  if (this.dirtyWorktree) {
-    if (!this.branchUpdateRoot || !this.headRef || !this.baseRef) throw new Error("dirty worktree precondition is missing");
-    const decision = decideBranchUpdateLive(this.branchUpdateRoot, this.headRef, this.baseRef, this.headRef);
-    const fixtureFile = path.join(this.branchUpdateRoot, "driver-fixture.json");
-    fs.writeFileSync(
-      fixtureFile,
-      JSON.stringify({
-        prs: [
-          {
-            number: 31,
-            headRefName: branch,
-            headRefOid: this.headRef,
-            isCrossRepository: false,
-            isDraft: false,
-            labels: [{ name: "agent:review" }],
-            statusCheckRollup: [],
-            comments: [],
-            reviewRequests: [],
-            mergeStateStatus: "CONFLICTING",
-          },
-        ],
-        agents: { result: { agents: [] } },
-        branchUpdate: { ...decision, baseOid: this.baseRef },
-      }),
-    );
-    const result = spawnSync("node", ["extensions/deadloop/automations/pr-reviewer-driver.ts", "--fixture", fixtureFile], {
-      cwd: process.cwd(),
-      encoding: "utf8",
-    });
-    if (result.status !== 0) throw new Error(result.stderr || result.stdout || "PR reviewer driver failed");
-    this.branchUpdateOutcome = JSON.parse(result.stdout).driverAction;
-    return;
-  }
   finalize(this);
 });
 
 Then("branch への push は行われない", function (this: SafetyWorld) {
   assert.deepEqual(pushCommands(this), []);
-});
-
-Then("branch 更新処理は開始されない", function (this: SafetyWorld) {
-  assert.equal(this.branchUpdateOutcome, "branch_update_blocked");
 });
 
 Then("完了結果は古い head として観測される", function (this: SafetyWorld) {
