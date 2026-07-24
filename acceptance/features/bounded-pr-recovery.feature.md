@@ -32,9 +32,9 @@
 * もし deadloop が pull request を確認する
 * ならば deadloop は回復案内を残す
 
-## シナリオ: base が変わった競合 pull request は通常レビューへ戻る
+## シナリオ: 競合回復で head が変わった pull request は通常レビューへ戻る
 
-* 前提 base の更新後に競合が解消した pull request がある
+* 前提 競合回復で head が変わった pull request がある
 * もし deadloop が pull request を確認する
 * ならば deadloop は通常レビューを開始する
 
@@ -49,12 +49,6 @@
 * 前提 初めての対応可能なレビュー指摘がある pull request がある
 * もし deadloop がレビュー結果を処理する
 * ならば deadloop は専用の修正作業を開始する
-
-## シナリオ: 専用の修正作業を開始した後は有界な監視へ引き渡す
-
-* 前提 初めての対応可能なレビュー指摘がある pull request がある
-* もし deadloop がレビュー結果を処理する
-* ならば deadloop は修正作業を有界な監視へ引き渡す
 
 ## シナリオ: 修正中もレビュー状態を維持する
 

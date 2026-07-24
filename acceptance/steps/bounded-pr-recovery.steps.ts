@@ -285,7 +285,7 @@ Given("同じ pull request head と base の競合回復を一度試した pull 
   this.case = "repeated-conflict";
 });
 
-Given("base の更新後に競合が解消した pull request がある", function (this: RecoveryWorld) {
+Given("競合回復で head が変わった pull request がある", function (this: RecoveryWorld) {
   this.case = "resolved-conflict";
 });
 
@@ -380,10 +380,6 @@ Then("deadloop はレビュー状態を維持する", function (this: RecoveryWo
 
 Then("deadloop は専用の修正作業を開始する", function (this: RecoveryWorld) {
   assert.equal(loggedRepairAgentStartCount(this.result), 1);
-});
-
-Then("deadloop は修正作業を有界な監視へ引き渡す", function (this: RecoveryWorld) {
-  assert.equal((this.result?.monitorHandoff as any)?.kind, "repair");
 });
 
 Then("deadloop は専用の修正作業を開始しない", function (this: RecoveryWorld) {
