@@ -1,6 +1,6 @@
 # Cucumber 移行記録
 
-この記録は [分類表](cucumber-test-classification.md) の ID と受け入れ仕様の対応を追跡する。受け入れシナリオへ移した後も、移行期間中は Vitest の局所的な診断を併存させる。完全な削除は移行仕様の同等性確認と人間レビュー後に行う。
+この記録は [分類表](cucumber-test-classification.md) の ID と受け入れ仕様の対応を追跡する。受け入れシナリオで完全に置換した Vitest は削除し、局所的な診断価値を具体的に記録したケースだけを残す。
 
 ## Issue #128: 公開設定と安全な既定値
 
@@ -54,10 +54,10 @@
 | T119 | Cucumber 移行済み | 「共有方針はローカルで省略した指示ファイルを補う」 |
 | T120 | Cucumber 移行済み | 「ローカルの Worker モデルは共有方針より優先する」 |
 | T121 | Vitest 継続 | このリポジトリの共有方針ファイル全体を解析する境界検査のため。 |
-| T122 | Vitest 継続 | 共有方針の空 automation 配列を結合する低レベル設定処理のため。 |
-| T123 | Vitest 継続 | 共有方針の automation フィールド結合を検査する低レベル設定処理のため。 |
+| T122 | Cucumber 移行済み | 「共有方針の空の自動化設定は自動化を無効のままにする」 |
+| T123 | Cucumber 移行済み | 「共有方針はローカルで省略した自動化を補う」 |
 | T124 | Vitest 継続 | 共有方針の driverFile 結合を検査する低レベル設定処理のため。 |
-| T125 | Vitest 継続 | 共有方針の外部レビュー設定結合を検査する低レベル設定処理のため。 |
+| T125 | Cucumber 移行済み | 「共有方針はローカルで省略した外部レビュー設定を補う」 |
 | T126 | Vitest 継続 | 共有方針の禁止キーに対する解析診断を局所的に検査するため。 |
 | T127 | Vitest 継続 | 方針取得時の基準ブランチ引数を検査する低レベル呼出契約のため。 |
 | T128 | Vitest 継続 | 設定構文エラーの内部 status reason を局所的に検査するため。 |
@@ -77,4 +77,4 @@
 npx cucumber-js --name '環境変数で指定した設定ファイルを使う'
 ```
 
-終了コードは 1 だった。失敗したのは対象の一シナリオだけで、`acceptance/steps/public-configuration.steps.ts` の `assert.equal` が実際値 `/environment/projects.json` と一時的な期待値 `/intentionally-wrong/projects.json` の差を報告した。期待値を `paths.environment` に復元し、同じコマンドを再実行して 1 scenario / 5 steps の成功を確認した。続いて `npm run test:acceptance` で全 19 scenarios / 79 steps の成功を確認した。一時的な不正値はコミットしていない。
+終了コードは 1 だった。失敗したのは対象の一シナリオだけで、`acceptance/steps/public-configuration.steps.ts` の `assert.equal` が実際値 `/environment/projects.json` と一時的な期待値 `/intentionally-wrong/projects.json` の差を報告した。期待値を `paths.environment` に復元し、同じコマンドを再実行して 1 scenario / 5 steps の成功を確認した。続いて `npm run test:acceptance` で全 22 scenarios / 91 steps の成功を確認した。一時的な不正値はコミットしていない。
