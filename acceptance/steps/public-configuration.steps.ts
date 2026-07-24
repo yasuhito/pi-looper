@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { Given, Then, When } from "@cucumber/cucumber";
 
 import {
+  observeCiFallbackDecision,
   observeReviewerLaunch,
   observeStatus,
   observeWorkerLaunch,
@@ -11,6 +12,7 @@ import {
 import type { RawProject } from "../../src/core";
 
 type ConfigurationWorld = {
+  ciFallbackDecision?: Record<string, unknown>;
   env?: Record<string, string | undefined>;
   files?: Record<string, RawProject>;
   policy?: RawProject;
@@ -127,6 +129,10 @@ When("Reviewer の起動を要求する", function (this: ConfigurationWorld) {
   this.reviewerLaunch = observeReviewerLaunch(projectFor(this));
 });
 
+When("公開設定から CI 代替検証の可否を判定する", function (this: ConfigurationWorld) {
+  this.ciFallbackDecision = observeCiFallbackDecision(projectFor(this));
+});
+
 Then("状態表示は環境変数の設定ファイルを示す", function (this: ConfigurationWorld) {
   assert.match(this.status ?? "", /config: local=\/environment\/projects\.json/);
 });
@@ -201,6 +207,10 @@ Then("状態表示に共有方針の自動化がある", function (this: Configu
 
 Then("状態表示で自動マージは無効である", function (this: ConfigurationWorld) {
   assert.match(this.status ?? "", /autoMerge: off/);
+});
+
+Then("公開設定からの CI 代替検証は許可されない", function (this: ConfigurationWorld) {
+  assert.equal(this.ciFallbackDecision?.fallbackAllowed, false);
 });
 
 Then("状態表示で外部レビューは無効である", function (this: ConfigurationWorld) {

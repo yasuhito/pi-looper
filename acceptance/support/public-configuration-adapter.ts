@@ -1,4 +1,3 @@
-import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -13,6 +12,19 @@ import {
 import type { RunnerAdapter } from "../../src/runner";
 import { buildStatusSnapshot, formatStatusReport } from "../../src/status";
 
+const { decideCiFallback } = require("../../extensions/deadloop/automations/ci-fallback-decision.ts") as {
+  decideCiFallback: (
+    data: unknown,
+    jobsData: unknown,
+    logText: string,
+    enabled: boolean,
+    mode: string,
+    maxImmediateSeconds: number,
+  ) => Record<string, unknown>;
+};
+const { main: launchAgent } = require("../../extensions/deadloop/automations/launch-agent.ts") as {
+  main: (argv: string[], options: Record<string, unknown>) => string;
+};
 const {
   envConfig: workerEnvironment,
   launchIssueWorkerFlow,
@@ -40,15 +52,7 @@ function selectedAutomation(project: NormalizedProject, driver: string) {
 
 function observeAgentLaunch(project: NormalizedProject, role: "worker" | "reviewer"): string[] {
   const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), "deadloop-configuration-launch-"));
-  const captureFile = path.join(sandbox, "herdr-argv.json");
-  const fakeHerdr = path.join(sandbox, "herdr");
-  fs.writeFileSync(
-    fakeHerdr,
-    `#!/usr/bin/env node\nrequire("node:fs").writeFileSync(process.env.DEADLOOP_CAPTURE_FILE, JSON.stringify(process.argv.slice(2)));\nprocess.stdout.write("{}\\n");\n`,
-    "utf8",
-  );
-  fs.chmodSync(fakeHerdr, 0o755);
-  fs.writeFileSync(path.join(sandbox, ".claude.json"), JSON.stringify({ projects: { "/repo": { hasTrustDialogAccepted: true } } }));
+  let agentArgv: string[] | undefined;
 
   const runner: RunnerAdapter = {
     createWorktree: () => ({ workspaceId: "workspace", worktreePath: sandbox }),
@@ -63,20 +67,17 @@ function observeAgentLaunch(project: NormalizedProject, role: "worker" | "review
   const ops = {
     mkdirSync: fs.mkdirSync,
     runner,
-    runText: (command: string[]) => {
-      const result = spawnSync(command[0], command.slice(1), {
-        cwd: process.cwd(),
-        encoding: "utf8",
-        env: {
-          ...process.env,
-          DEADLOOP_CAPTURE_FILE: captureFile,
-          HOME: sandbox,
-          PATH: `${sandbox}:${process.env.PATH || ""}`,
+    runText: (command: string[]) =>
+      launchAgent(command.slice(2), {
+        readClaudeConfig: () => ({ projects: { "/repo": { hasTrustDialogAccepted: true } } }),
+        runner: {
+          startAgent: (input: { agentArgv: string[] }) => {
+            agentArgv = input.agentArgv;
+            return "{}\n";
+          },
         },
-      });
-      if (result.status !== 0) throw new Error(result.stderr || result.stdout || "agent launch failed");
-      return result.stdout;
-    },
+        writeOutput: false,
+      }),
     writeFileSync: fs.writeFileSync,
   };
 
@@ -103,10 +104,8 @@ function observeAgentLaunch(project: NormalizedProject, role: "worker" | "review
         ops,
       );
     }
-    const herdrArgv = JSON.parse(fs.readFileSync(captureFile, "utf8")) as string[];
-    const separator = herdrArgv.indexOf("--");
-    if (separator < 0) throw new Error("Herdr launch omitted the agent command separator");
-    return herdrArgv.slice(separator + 1);
+    if (!agentArgv) throw new Error("agent launch did not reach the launcher boundary");
+    return agentArgv;
   } finally {
     fs.rmSync(sandbox, { recursive: true, force: true });
   }
@@ -149,4 +148,19 @@ export function observeWorkerLaunch(project: NormalizedProject): string[] {
 
 export function observeReviewerLaunch(project: NormalizedProject): string[] {
   return observeAgentLaunch(project, "reviewer");
+}
+
+export function observeCiFallbackDecision(project: NormalizedProject): Record<string, unknown> {
+  const automation = selectedAutomation(project, "pr-reviewer-driver.ts");
+  const environment = automationEnvironment(project, automation);
+  const fixture = path.join(process.cwd(), "test/fixtures/ci-fallback/qorraq-all-jobs-immediate-failure.json");
+  const input = JSON.parse(fs.readFileSync(fixture, "utf8")) as unknown;
+  return decideCiFallback(
+    input,
+    null,
+    "",
+    environment.DEADLOOP_CI_FALLBACK_ENABLED === "1",
+    environment.DEADLOOP_CI_FALLBACK_MODE ?? "",
+    5,
+  );
 }
