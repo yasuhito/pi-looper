@@ -10,7 +10,7 @@ const {
   finalizeBranchUpdate,
 } = require("../../extensions/deadloop/automations/pr-branch-update-finalize.ts");
 const {
-  decideBranchUpdate,
+  decideBranchUpdateLive,
 } = require("../../extensions/deadloop/automations/pr-branch-update-decision.ts");
 
 const head = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -19,15 +19,18 @@ const branch = "agent/issue-31";
 
 type SafetyWorld = {
   actualHead?: string;
+  baseRef?: string;
+  branchUpdateOperations?: string[];
+  branchUpdateRoot?: string;
   changeHeadAfterChecks?: boolean;
   crossRepository?: boolean;
   commands?: string[][];
   dirtyWorktree?: boolean;
   finalizeResult?: Record<string, unknown>;
+  headRef?: string;
   temporaryRoots?: string[];
   trustLaunchMarker?: string;
   trustRoot?: string;
-  workerLaunches?: string[];
 };
 
 function finalize(world: SafetyWorld): void {
@@ -84,8 +87,21 @@ function pushCommands(world: SafetyWorld): string[][] {
   return (world.commands ?? []).filter((command) => command[0] === "git" && command.includes("push"));
 }
 
-function expectedPushCommand(): string[] {
-  return ["git", "-C", "/worktree", "push", "--porcelain", "origin", `HEAD:refs/heads/${branch}`];
+function pushedRefs(world: SafetyWorld): string[] {
+  return pushCommands(world).flatMap((command) =>
+    command
+      .slice(command.indexOf("origin") + 1)
+      .filter((argument) => !argument.startsWith("-"))
+      .map((argument) => argument.replace(/^\+/, "")),
+  );
+}
+
+function forcePushOptions(world: SafetyWorld): string[] {
+  return pushCommands(world).flatMap((command) =>
+    command.filter(
+      (argument) => argument === "-f" || argument === "--mirror" || argument.startsWith("--force") || argument.startsWith("+"),
+    ),
+  );
 }
 
 function temporaryRoot(world: SafetyWorld, prefix: string): string {
@@ -104,8 +120,25 @@ Given("自動チェック後に pull request head が変わる", function (this:
 });
 
 Given("更新対象の作業場所に未コミットの変更がある", function (this: SafetyWorld) {
-  this.actualHead = head;
-  this.crossRepository = false;
+  const root = temporaryRoot(this, "deadloop-dirty-branch-update-");
+  const runGit = (args: string[]): string => {
+    const result = spawnSync("git", ["-C", root, ...args], { encoding: "utf8" });
+    if (result.status !== 0) throw new Error(result.stderr || result.stdout || `git failed: ${args.join(" ")}`);
+    return result.stdout.trim();
+  };
+  runGit(["init", "--quiet"]);
+  runGit(["config", "user.name", "Deadloop Acceptance"]);
+  runGit(["config", "user.email", "acceptance@example.invalid"]);
+  fs.writeFileSync(path.join(root, "tracked-file"), "pull request head\n");
+  runGit(["add", "tracked-file"]);
+  runGit(["commit", "--quiet", "-m", "pull request head"]);
+  this.headRef = runGit(["rev-parse", "HEAD"]);
+  fs.writeFileSync(path.join(root, "tracked-file"), "selected base head\n");
+  runGit(["commit", "--quiet", "-am", "selected base head"]);
+  this.baseRef = runGit(["rev-parse", "HEAD"]);
+  runGit(["checkout", "--quiet", "--detach", this.headRef]);
+  fs.writeFileSync(path.join(root, "tracked-file"), "uncommitted change\n");
+  this.branchUpdateRoot = root;
   this.dirtyWorktree = true;
 });
 
@@ -115,9 +148,10 @@ Given("pull request が別リポジトリから作られている", function (th
 
 When("deadloop が branch 更新を完了しようとする", function (this: SafetyWorld) {
   if (this.dirtyWorktree) {
-    const decision = decideBranchUpdate(1, 1, false, false);
-    this.workerLaunches = decision.action === "delegate_worker" ? [branch] : [];
-    if (decision.action !== "mechanical_update") return;
+    if (!this.branchUpdateRoot || !this.headRef || !this.baseRef) throw new Error("dirty worktree precondition is missing");
+    const decision = decideBranchUpdateLive(this.branchUpdateRoot, this.headRef, this.baseRef, this.headRef);
+    this.branchUpdateOperations = [decision.action];
+    return;
   }
   finalize(this);
 });
@@ -127,10 +161,7 @@ Then("branch への push は行われない", function (this: SafetyWorld) {
 });
 
 Then("branch 更新処理は開始されない", function (this: SafetyWorld) {
-  assert.deepEqual(
-    { workerLaunches: this.workerLaunches ?? [], pushCommands: pushCommands(this) },
-    { workerLaunches: [], pushCommands: [] },
-  );
+  assert.deepEqual(this.branchUpdateOperations, ["blocked"]);
 });
 
 Then("完了結果は古い head として観測される", function (this: SafetyWorld) {
@@ -185,11 +216,11 @@ Then("作業エージェントは起動されない", function (this: SafetyWorl
 });
 
 Then("選択された branch だけが push の対象になる", function (this: SafetyWorld) {
-  assert.deepEqual(pushCommands(this), [expectedPushCommand()]);
+  assert.deepEqual(pushedRefs(this), [`HEAD:refs/heads/${branch}`]);
 });
 
 Then("branch は強制せずに push される", function (this: SafetyWorld) {
-  assert.deepEqual(pushCommands(this), [expectedPushCommand()]);
+  assert.deepEqual(forcePushOptions(this), []);
 });
 
 After(function (this: SafetyWorld) {
