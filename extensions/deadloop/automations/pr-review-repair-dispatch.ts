@@ -251,29 +251,36 @@ function launchRepair(
     { encoding: "utf8", mode: 0o600 },
   );
   const repairName = repairAgentName(prNumber, key, env);
-  const launch = launchAgentFlow(
-    {
-      worktree: { mode: "open", branch },
-      repoPath: env.repoPath,
-      automationDir: env.automationDir,
-      stateDir: env.stateDir,
-      name: repairName,
-      agent: env.workerAgent,
-      model: env.workerModel,
-      level: "medium",
-      uuid,
-      promptFilePrefix: "review-repair-prompt",
-      renderPrompt: ({ promiseFile, worktreePath }: { promiseFile: string; worktreePath: string }) =>
-        repairWorkerPrompt(prNumber, branch, expectedHead, findings, key, promiseFile, worktreePath, env),
-    },
-    {
-      mkdirSync: fs.mkdirSync,
-      runner: createHerdrRunnerFromCommandRunner(commandRunner),
-      runText: commandRunner.runText,
-      writeFileSync: fs.writeFileSync,
-    },
-  );
-  return { repairName, ...launch };
+  const promiseFile = path.join(runDir, "promise.json");
+  try {
+    const launch = launchAgentFlow(
+      {
+        worktree: { mode: "open", branch },
+        repoPath: env.repoPath,
+        automationDir: env.automationDir,
+        stateDir: env.stateDir,
+        name: repairName,
+        agent: env.workerAgent,
+        model: env.workerModel,
+        level: "medium",
+        uuid,
+        promptFilePrefix: "review-repair-prompt",
+        renderPrompt: ({ promiseFile, worktreePath }: { promiseFile: string; worktreePath: string }) =>
+          repairWorkerPrompt(prNumber, branch, expectedHead, findings, key, promiseFile, worktreePath, env),
+      },
+      {
+        mkdirSync: fs.mkdirSync,
+        runner: createHerdrRunnerFromCommandRunner(commandRunner),
+        runText: commandRunner.runText,
+        writeFileSync: fs.writeFileSync,
+      },
+    );
+    return { repairName, ...launch };
+  } catch (error) {
+    throw Object.assign(error instanceof Error ? error : new Error(String(error)), {
+      launch: { repairName, promiseFile },
+    });
+  }
 }
 
 function dispatch(args: JsonObject): DriverResult {
@@ -415,10 +422,8 @@ function dispatch(args: JsonObject): DriverResult {
   }
 
   github.commentPr(env.githubRepo, prNumber, renderChangesRequestedComment({ ...commentInput, reviewFingerprint: selection.reviewFingerprint }));
-  let launch: JsonObject;
   try {
     github.movePrLabels(env.githubRepo, prNumber, { add: [env.reviewLabel, env.reviewingLabel] });
-    launch = launchRepair(prNumber, branch, expectedHead, findings, selection.key, env);
   } catch (error) {
     const comment = applyHumanBlock(
       prNumber,
@@ -431,6 +436,34 @@ function dispatch(args: JsonObject): DriverResult {
       driverAction: "review_repair_launch_failed",
       comment,
     });
+  }
+
+  let launch: JsonObject;
+  try {
+    launch = launchRepair(prNumber, branch, expectedHead, findings, selection.key, env);
+  } catch (error) {
+    const failedLaunch = (error as Error & { launch?: JsonObject }).launch;
+    let recovered = false;
+    try {
+      recovered = recoverLaunchFromHerdr(prNumber, branch, selection.key, env);
+    } catch {
+      recovered = false;
+    }
+    if (recovered && failedLaunch?.promiseFile) {
+      launch = { ...failedLaunch, recovered: true };
+    } else {
+      const comment = applyHumanBlock(
+        prNumber,
+        env,
+        `the bounded repair launch failed after its attempt marker was recorded: ${error instanceof Error ? error.message : String(error)}`,
+        promise.summary,
+        `<!-- deadloop:review-repair-dispatch-stop key=${selection.key} -->`,
+      );
+      return driverResult("done", `PR #${prNumber} repair launch failed; marked blocked`, {
+        driverAction: "review_repair_launch_failed",
+        comment,
+      });
+    }
   }
 
   let launchEvidenceError = "";

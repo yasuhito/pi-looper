@@ -19,11 +19,24 @@ function fixture(name: string) {
 
 describe("PR review public comments", () => {
   it("renders every changes-requested finding from the fixture", () => {
-    const input = fixture("changes-requested.json");
+    expect(renderChangesRequestedComment(fixture("changes-requested.json"))).toBe(`## Review result: changes required
 
-    expect(renderChangesRequestedComment(input)).toContain(
-      "### Missing validation — major\n- File: `src/promise.ts`\n- Reason: The repair report is accepted without checking its fields.",
-    );
+- Reviewed commit: \`aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\`
+- Conclusion: The changes below must be addressed before this PR can proceed.
+
+### Unsafe fallback — blocker
+- File: \`src/review.ts:17\`
+- Reason: The fallback can approve a failed review.
+
+### Missing validation — major
+- File: \`src/promise.ts\`
+- Reason: The repair report is accepted without checking its fields.
+
+## Next step
+Exactly one bounded automatic repair will now start and will change only the findings listed above. The updated head will be reviewed again after a successful push.
+
+<!-- deadloop:review-result head=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa review=1234567890abcdef1234 outcome=changes_requested -->
+<!-- deadloop:review-repair-attempt key=90e33b980e83cbff65a4 head=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa review=1234567890abcdef1234 -->`);
   });
 
   it("explains that one bounded repair starts", () => {
@@ -59,14 +72,28 @@ describe("PR review public comments", () => {
     ).toContain("Resolve the decision above, push a new commit if code changes are needed, then remove `agent:blocked`");
   });
 
-  it("renders each structured repair summary from the fixture", () => {
-    expect(renderRepairSuccessComment(fixture("repair-succeeded.json"))).toContain(
-      "### Missing validation\n- Changed: Validated every structured repair field before rendering.\n- Files: `src/promise.ts`, `src/comments.ts`",
-    );
-  });
+  it("renders every structured repair and check from the fixture", () => {
+    expect(renderRepairSuccessComment(fixture("repair-succeeded.json"))).toBe(`## Automatic review repair completed
 
-  it("renders finalizer-confirmed checks from the fixture", () => {
-    expect(renderRepairSuccessComment(fixture("repair-succeeded.json"))).toContain("- `npm test`: passed");
+- Review findings from: \`aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\`
+- New commit: \`bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\`
+
+### Unsafe fallback
+- Changed: Removed the approval fallback and returned a blocked result.
+- Files: \`src/review.ts\`
+
+### Missing validation
+- Changed: Validated every structured repair field before rendering.
+- Files: \`src/promise.ts\`, \`src/comments.ts\`
+
+## Checks
+- \`npm test\`: passed
+- \`npm run typecheck\`: passed
+
+## Next step
+The new head will be reviewed again. Review labels remain in place.
+
+<!-- deadloop:review-repair-result key=abcdef1234567890abcd head=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb -->`);
   });
 
   it("detects an existing review result marker", () => {
