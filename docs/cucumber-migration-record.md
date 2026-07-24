@@ -10,8 +10,8 @@
 |---|---|---|
 | T021 | 移行済み | 信頼されていない作業場所では作業エージェントを起動しない |
 | T253 | T021 と同じシナリオへ統合 | 信頼されていない作業場所では作業エージェントを起動しない |
-| T283 | Vitest 継続 | `decideBranchUpdateLive` の内部判断を確認する単体テストであり、更新実行境界の外部結果ではないため受け入れ仕様へ移行しない |
-| T284 | Vitest 継続 | `decideBranchUpdateLive` の内部判断を確認する単体テストであり、更新実行境界の外部結果ではないため受け入れ仕様へ移行しない |
+| T283 | Vitest 継続 | `--fixture` 経由で `decideBranchUpdateFixture` が返す純粋な `decideBranchUpdate` の内部判断結果を確認する単体テストであり、更新実行境界の外部結果ではないため受け入れ仕様へ移行しない |
+| T284 | Vitest 継続 | `--fixture` 経由で `decideBranchUpdateFixture` が返す純粋な `decideBranchUpdate` の内部判断結果を確認する単体テストであり、更新実行境界の外部結果ではないため受け入れ仕様へ移行しない |
 | T288 | 移行済み | 自動チェックの完了時に変わった pull request head は、その後の再照会で古い head として報告する |
 | T289 | 移行済み | 別リポジトリの pull request は branch を更新しない |
 | T290 | T288 と同じシナリオへ統合 | 自動チェック完了後に head を変更するアダプターにより、再照会がチェックより後であることを外部結果として確認する |
@@ -22,7 +22,7 @@ T285〜T287 は retry key と記録済み試行の低レベル状態を診断す
 
 ### 同等性確認
 
-元の分類に対応する Vitest 9 件を残したまま、追加した Cucumber 9 シナリオを次のコマンドで確認した。`npm run test:acceptance` は、追加した 9 シナリオを既存の受け入れスイートとともに実行する。
+元の分類に対応する Vitest 9 件を残したまま、追加した Cucumber 7 シナリオを次のコマンドで確認した。`npm run test:acceptance` は、追加した 7 シナリオを既存の受け入れスイートとともに実行する。
 
 ```bash
 npm run test:acceptance
