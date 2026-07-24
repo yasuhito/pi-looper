@@ -119,7 +119,7 @@ Given("選定可能な Issue が GitHub 上で未完了の依存を持つ", func
   this.fixtureName = "selection-open-relationship-dependency.json";
 });
 
-When("coordinator の事前確認が作業対象を探す", function (this: IssueSelectionWorld) {
+When("deadloop が作業対象を探す", function (this: IssueSelectionWorld) {
   if (this.precheckMode !== "closed-issue") throw new Error("precheck precondition is missing");
   this.precheckStatus = runClosedIssuePrecheck();
 });
