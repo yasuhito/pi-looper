@@ -52,4 +52,4 @@ Issue [#116](https://github.com/yasuhito/deadloop/issues/116) では、PR の自
 
 通常の成功に加え、`acceptance/steps/bounded-pr-recovery.steps.ts` のテスト用アダプターが記録する Herdr 起動、GitHub のコメント・結果ラベル、次のレビュー周期の起動回数を各シナリオで観測する。
 
-期待結果の失敗確認では、「二度目の技術的なレビュー失敗は再試行しない」の reviewer 起動数の期待値を一時的に `0` から `1` へ変更し、`npx cucumber-js --name '^二度目の技術的なレビュー失敗は再試行しない$'` を実行した。対象の一シナリオだけが終了コード 1 で失敗し、Feature のシナリオ位置（107行）、失敗した Then、TypeScript の assertion 位置（416行）、実値 `0` と誤った期待値 `1` の差を表示した。期待値を `0` へ戻した後、同じコマンドで一シナリオ・四ステップが成功した（Cucumber 表示 0.224秒）。最終確認は `npm run check` で Vitest と Cucumber を直列に実行する。
+期待結果の失敗確認では、「二度目の技術的なレビュー失敗は再試行しない」の reviewer 起動数の期待値を一時的に `0` から `1` へ変更し、`npx cucumber-js --name '^二度目の技術的なレビュー失敗は再試行しない$'` を実行した。対象の一シナリオだけが終了コード 1 で失敗し、Feature のシナリオ位置（101行）、失敗した Then のステップ定義位置（410行）、TypeScript の assertion 位置（412行）、実値 `0` と誤った期待値 `1` の差を表示した（Cucumber 表示 0.241秒）。期待値を `0` へ戻した後、同じコマンドで一シナリオ・四ステップが成功した（Cucumber 表示 0.241秒）。最終確認は `npm run check` で Vitest と Cucumber を直列に実行する。
