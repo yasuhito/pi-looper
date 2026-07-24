@@ -15,11 +15,11 @@ describe("guarded launch revalidation wiring", () => {
   });
 
   it("revalidates PR eligibility inside the reviewer launch guard", () => {
-    expect(reviewerDriver).toMatch(/function launchPrReviewer[\s\S]*withEnabledDriverLaunch[\s\S]*revalidate:[\s\S]*planPrReviewerAction/);
+    expect(reviewerDriver).toMatch(/function launchPrReviewer[\s\S]*launchWithAdapters[\s\S]*planPrReviewerAction/);
   });
 
   it("revalidates the exact head, base, and attempt marker inside the branch-update launch guard", () => {
-    expect(reviewerDriver).toMatch(/function launchBranchUpdate[\s\S]*revalidate:[\s\S]*branchUpdateDecision[\s\S]*branchUpdateAttemptExists/);
+    expect(reviewerDriver).toMatch(/function launchBranchUpdate[\s\S]*launchWithAdapters[\s\S]*branchUpdateDecision[\s\S]*branchUpdateAttemptExists/);
   });
 
   it("revalidates the exact review-repair attempt inside the repair launch guard", () => {
