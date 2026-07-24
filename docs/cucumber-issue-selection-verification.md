@@ -22,6 +22,10 @@ Issue #117 が求める選定対象外の状態を網羅するため、次のシ
 
 各シナリオは既存の決定論的な Issue 選定コマンドを fixture で実行する。選定しないシナリオは選定結果を、選定する T243 と T246 のシナリオはそれぞれ Issue 番号 1 と 2 を Then の一つの assertion で観測する。したがって、以前のテストと同じ事前状態（公開ラベル、本文または GitHub の依存状態）および契機（Issue 選定）に対して、同じ利用者観測可能な選定結果と選定された Issue の同一性を確認する。
 
+## Vitest と Cucumber の併存確認
+
+2026-07-24 に、削除前の T243〜T248 の6テストを `test/issue-coordinator-selection.test.ts` へ一時的に復元し、置換後の Cucumber シナリオと併存させた。`npm run test:unit` は test files 44件、tests 496件がすべて成功し、このファイルの8テスト（T243〜T250を含む）も成功した。続けて `npm run test:acceptance` を実行し、9シナリオ、37ステップがすべて成功した。これにより、同じ製品コードに対して T243〜T248 の Vitest と対応する Cucumber の正常系がともに成功することを確認した。確認後、完全に置換済みの T243〜T248 だけを再度削除し、低レベル診断として残す T249、T250 は変更していない。
+
 ## 意図的な失敗の確認
 
 2026-07-24 に Issue 番号を確認する Then の期待値へ一時的に 1000 を加えて、`npm run test:acceptance` を実行した。コマンドは status 1 で終了し、「準備済みの Issue を作業対象に選ぶ」 (`acceptance/features/issue-selection.feature.md:8`) と「完了した本文依存を持つ Issue を作業対象に選ぶ」 (`acceptance/features/issue-selection.feature.md:44`) が失敗した。どちらも `acceptance/steps/issue-selection.steps.ts:68` の Then と同ファイル `:69` の assertion を指し、それぞれ `1 !== 1001` (`-1`, `+1001`) と `2 !== 1002` (`-2`, `+1002`) の差分を報告した。確認後に assertion は引数で渡された Issue 番号を期待する状態へ戻した。
