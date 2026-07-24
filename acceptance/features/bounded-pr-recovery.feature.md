@@ -14,11 +14,17 @@
 * もし deadloop が pull request を確認する
 * ならば deadloop は専用の競合回復作業を開始しない
 
+## シナリオ: 同じ pull request head と base の競合回復を再試行してもレビュー対象に残す
+
+* 前提 同じ pull request head と base の競合回復を一度試した pull request がある
+* もし deadloop が pull request を確認する
+* ならば deadloop はレビュー対象に残す
+
 ## シナリオ: 同じ pull request head と base の競合回復を再試行すると人間対応へ移る
 
 * 前提 同じ pull request head と base の競合回復を一度試した pull request がある
 * もし deadloop が pull request を確認する
-* ならば deadloop はレビューを維持して人間対応へ移す
+* ならば deadloop は人間対応へ移す
 
 ## シナリオ: 同じ pull request head と base の競合回復を再試行すると回復案内を残す
 
@@ -68,11 +74,17 @@
 * もし deadloop がレビュー結果を処理する
 * ならば deadloop は専用の修正作業を開始しない
 
+## シナリオ: 修正後の新しい head で同じレビュー指摘が残ってもレビュー対象に残す
+
+* 前提 修正後の新しい head でも同じレビュー指摘が残った pull request がある
+* もし deadloop がレビュー結果を処理する
+* ならば deadloop はレビュー対象に残す
+
 ## シナリオ: 修正後の新しい head で同じレビュー指摘が残ると人間対応へ移る
 
 * 前提 修正後の新しい head でも同じレビュー指摘が残った pull request がある
 * もし deadloop がレビュー結果を処理する
-* ならば deadloop はレビューを維持して人間対応へ移す
+* ならば deadloop は人間対応へ移す
 
 ## シナリオ: 修正後の新しい head で同じレビュー指摘が残ると回復案内を残す
 
@@ -98,11 +110,17 @@
 * もし deadloop がレビュー結果を処理する
 * ならば deadloop は通常レビューを開始しない
 
+## シナリオ: 二度目の技術的なレビュー失敗後もレビュー対象に残す
+
+* 前提 技術的に一度失敗したレビューがある pull request がある
+* もし deadloop がレビュー結果を処理する
+* ならば deadloop はレビュー対象に残す
+
 ## シナリオ: 二度目の技術的なレビュー失敗は人間対応へ移る
 
 * 前提 技術的に一度失敗したレビューがある pull request がある
 * もし deadloop がレビュー結果を処理する
-* ならば deadloop はレビューを維持して人間対応へ移す
+* ならば deadloop は人間対応へ移す
 
 ## シナリオ: 二度目の技術的なレビュー失敗は回復案内を残す
 

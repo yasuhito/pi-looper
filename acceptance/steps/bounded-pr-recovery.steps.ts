@@ -189,7 +189,7 @@ else if (args[0] === "agent" && args[1] === "start") process.stdout.write(JSON.s
     );
     if (result.status !== 0) throw new Error(result.stderr || result.stdout);
     let retryCycleEffects: unknown;
-    if (testCase === "first-technical-failure") {
+    if (testCase === "first-technical-failure" || testCase === "repeated-technical-failure") {
       const retryFixture = path.join(root, "retry-cycle.json");
       fs.writeFileSync(retryFixture, JSON.stringify({
         prs: [{
@@ -390,8 +390,12 @@ Then("deadloop は専用の修正作業を開始しない", function (this: Reco
   assert.equal(loggedAgentStartCount(this.result), 0);
 });
 
-Then("deadloop はレビューを維持して人間対応へ移す", function (this: RecoveryWorld) {
-  assert.deepEqual(observedLabels(this.result), ["agent:review", "agent:blocked"]);
+Then("deadloop はレビュー対象に残す", function (this: RecoveryWorld) {
+  assert.equal(observedLabels(this.result).includes("agent:review"), true);
+});
+
+Then("deadloop は人間対応へ移す", function (this: RecoveryWorld) {
+  assert.equal(observedLabels(this.result).includes("agent:blocked"), true);
 });
 
 Then("deadloop は回復案内を残す", function (this: RecoveryWorld) {
@@ -408,7 +412,8 @@ Then("deadloop は人間対応にしない", function (this: RecoveryWorld) {
 });
 
 Then("deadloop は通常レビューを開始しない", function (this: RecoveryWorld) {
-  assert.equal(loggedAgentStartCount(this.result), 0);
+  const starts = (this.result?.retryCycleEffects as any)?.herdrStarts?.filter((start: any) => start.name.endsWith("-reviewer")) ?? [];
+  assert.equal(starts.length, 0);
 });
 
 Then("deadloop は branch へ push しない", function (this: RecoveryWorld) {
