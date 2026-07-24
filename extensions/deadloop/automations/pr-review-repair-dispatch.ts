@@ -28,7 +28,6 @@ const { StaleLaunchError, assertSameLaunchTarget, isStaleLaunchError, labelNames
 import type { DriverResult, JsonObject } from "../../../src/automation-driver-kit";
 
 const commandRunner = createCommandRunner();
-const github = createGithubOperations(commandRunner);
 
 function envConfig() {
   const automationDir = __dirname;
