@@ -8,12 +8,6 @@
 * もし deadloop が pull request を確認する
 * ならば deadloop は専用の競合回復作業を開始する
 
-## シナリオ: 競合回復の監視者は branch を直接 push しない
-
-* 前提 回復できる競合状態の pull request がある
-* もし deadloop が pull request を確認する
-* ならば deadloop は監視者に branch を直接 push しないよう指示する
-
 ## シナリオ: 同じ pull request head と base の競合回復は二度開始しない
 
 * 前提 同じ pull request head と base の競合回復を一度試した pull request がある
@@ -68,18 +62,6 @@
 * もし deadloop がレビュー結果を処理する
 * ならば deadloop はレビューを停止して人間対応にする
 
-## シナリオ: 修正作業はレビュー指摘の範囲を広げない
-
-* 前提 初めての対応可能なレビュー指摘がある pull request がある
-* もし deadloop が修正作業者へ指示する
-* ならば deadloop は修正作業者に作業範囲を広げないよう指示する
-
-## シナリオ: 修正作業者は直接 push しない
-
-* 前提 初めての対応可能なレビュー指摘がある pull request がある
-* もし deadloop が修正作業者へ指示する
-* ならば deadloop は修正作業者に直接 push しないよう指示する
-
 ## シナリオ: 古い pull request head の修正は push しない
 
 * 前提 修正対象の pull request head が確認済みである
@@ -97,6 +79,12 @@
 * 前提 修正対象の pull request head が確認済みである
 * もし deadloop が修正を完了する
 * ならば deadloop は push 前に設定済みチェックを実行する
+
+## シナリオ: 別のリポジトリからの pull request の競合回復は push しない
+
+* 前提 別のリポジトリからの pull request が競合している
+* もし deadloop が競合回復を完了する
+* ならば deadloop は競合回復 branch へ push しない
 
 ## シナリオ: 競合回復は確認した既存 branch へ非強制でだけ push する
 

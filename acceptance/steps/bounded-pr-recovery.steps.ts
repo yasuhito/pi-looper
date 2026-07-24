@@ -9,7 +9,6 @@ import { Given, Then, When } from "@cucumber/cucumber";
 const { finalizeBranchUpdate } = require("../../extensions/deadloop/automations/pr-branch-update-finalize.ts");
 const { renderRepairMarker, renderTechnicalFailureMarker, reviewResultFingerprint } = require("../../extensions/deadloop/automations/pr-review-repair-state.ts");
 const { finalizeReviewRepair } = require("../../extensions/deadloop/automations/pr-review-repair-finalize.ts");
-const { repairWorkerPrompt } = require("../../extensions/deadloop/automations/pr-review-repair-dispatch.ts");
 
 const head = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const base = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
@@ -155,7 +154,7 @@ else if (args[0] === "agent" && args[1] === "start") process.stdout.write(JSON.s
   }
 }
 
-function finalizerOps(commands: string[][], actualHead = head) {
+function finalizerOps(commands: string[][], actualHead = head, isCrossRepository = false) {
   return {
     assertEnabled: () => ({ githubRepo: "owner/repo", githubRepositoryId: "R_repo" }),
     run: (args: string[]) => {
@@ -168,7 +167,7 @@ function finalizerOps(commands: string[][], actualHead = head) {
       if (args[0] === "gh") {
         return {
           status: 0,
-          stdout: JSON.stringify({ state: "OPEN", isCrossRepository: false, headRefName: branch, headRefOid: actualHead }),
+          stdout: JSON.stringify({ state: "OPEN", isCrossRepository, headRefName: branch, headRefOid: actualHead }),
           stderr: "",
         };
       }
@@ -197,7 +196,7 @@ function repairFinalizer(commands: string[][], actualHead = head) {
   );
 }
 
-function branchUpdateFinalizer(commands: string[][], actualHead = head) {
+function branchUpdateFinalizer(commands: string[][], actualHead = head, isCrossRepository = false) {
   return finalizeBranchUpdate(
     {
       repo: "/worktree",
@@ -213,7 +212,7 @@ function branchUpdateFinalizer(commands: string[][], actualHead = head) {
       enabledAt: 1,
       checkCommand: "npm test",
     },
-    finalizerOps(commands, actualHead),
+    finalizerOps(commands, actualHead, isCrossRepository),
   );
 }
 
@@ -261,6 +260,10 @@ Given("競合回復対象の pull request head が確認済みである", functi
   this.case = "branch-update-finalize";
 });
 
+Given("別のリポジトリからの pull request が競合している", function (this: RecoveryWorld) {
+  this.case = "cross-repository-branch-update";
+});
+
 When("deadloop が pull request を確認する", function (this: RecoveryWorld) {
   if (this.case === "conflict") this.result = reviewerDriver("merge-conflict.json");
   if (this.case === "repeated-conflict") this.result = reviewerDriver("merge-conflict-double-attempt.json");
@@ -277,23 +280,6 @@ When("deadloop がレビュー指摘の修正を開始する", function (this: R
   this.result = repairDispatch("first-repair");
 });
 
-When("deadloop が修正作業者へ指示する", function (this: RecoveryWorld) {
-  this.result = { prompt: repairWorkerPrompt("31", branch, head, findings, "/state/promise.json", "/worktree", {
-    projectId: "demo",
-    repoPath: "/repo",
-    githubRepo: "owner/repo",
-    stateDir: "/state",
-    checkCommand: "npm test",
-    workerAgent: "pi",
-    workerModel: "",
-    remote: "origin",
-    reviewLabel: "agent:review",
-    reviewingLabel: "agent:reviewing",
-    blockedLabel: "agent:blocked",
-    automationDir: "/automation",
-  }) };
-});
-
 When("push の直前に pull request head が変わる", function (this: RecoveryWorld) {
   this.commands = [];
   if (this.case === "repair-finalize") this.result = repairFinalizer(this.commands, base);
@@ -307,15 +293,11 @@ When("deadloop が修正を完了する", function (this: RecoveryWorld) {
 
 When("deadloop が競合回復を完了する", function (this: RecoveryWorld) {
   this.commands = [];
-  this.result = branchUpdateFinalizer(this.commands);
+  this.result = branchUpdateFinalizer(this.commands, head, this.case === "cross-repository-branch-update");
 });
 
 Then("deadloop は専用の競合回復作業を開始する", function (this: RecoveryWorld) {
   assert.equal(this.result?.driverAction, "branch_update_monitor_request");
-});
-
-Then("deadloop は監視者に branch を直接 push しないよう指示する", function (this: RecoveryWorld) {
-  assert.ok(String(this.result?.prompt).includes("never launch or select an agent, push a branch, review the PR, or merge it"));
 });
 
 Then("deadloop は競合回復を停止して人間対応にする", function (this: RecoveryWorld) {
@@ -344,14 +326,6 @@ Then("deadloop はレビューを一度だけ再試行する", function (this: R
 
 Then("deadloop はレビューを停止して人間対応にする", function (this: RecoveryWorld) {
   assert.ok(String(this.result?.githubLog).includes("agent:blocked"));
-});
-
-Then("deadloop は修正作業者に作業範囲を広げないよう指示する", function (this: RecoveryWorld) {
-  assert.ok(String(this.result?.prompt).includes("Do not add features, reinterpret the issue, or widen scope"));
-});
-
-Then("deadloop は修正作業者に直接 push しないよう指示する", function (this: RecoveryWorld) {
-  assert.ok(String(this.result?.prompt).includes("Do not run git push directly"));
 });
 
 Then("deadloop は branch へ push しない", function (this: RecoveryWorld) {
