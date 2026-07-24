@@ -4,7 +4,7 @@
 
 ## Issue #115: CI 代替検証
 
-`test/ci-fallback-decision.test.ts` は、同等性を確認できるまで残す。Cucumber の各シナリオは同じ決定論的 CLI、同じ入力 fixture、同じ一つの観測結果を検査する。
+T058〜T065 は、Cucumber の各シナリオが元の Vitest と同じ決定論的 CLI、同じ入力 fixture、同じ一つの観測結果を検査する。正常系の同等性確認では、`npm run test:unit -- --run test/ci-fallback-decision.test.ts` が8件成功（Vitest 表示 546 ms、コマンド全体 0.921秒）、`npm run test:acceptance` が9シナリオ成功（Cucumber 表示 0.409秒、コマンド全体 0.852秒）だった。局所的な診断価値も Cucumber の失敗位置と差分で維持されるため、完全に置換された `test/ci-fallback-decision.test.ts` の8件は削除した。
 
 | 分類 ID | Vitest の保証 | 移行先シナリオ | Cucumber の観測結果 |
 |---|---|---|---|
@@ -17,4 +17,17 @@
 | T064 | 成功と即時失敗が混在するとき代替検証を拒否する | 一部の CI ジョブだけが失敗した場合は CI 代替検証を許可しない | 許可されない |
 | T065 | ジョブの実行後の失敗で代替検証を拒否する | CI ジョブが実行後に失敗した場合は CI 代替検証を許可しない | 許可されない |
 
-意図的な失敗確認として、「明示設定がない場合は CI 代替検証を許可しない」の期待結果だけを一時的に「許可される」へ変えて `npm run test:acceptance` を実行した。対象シナリオは `false !== true` の assertion で非 0 終了し、元の期待結果へ復元した。
+### 意図的な失敗確認
+
+各確認では、対象シナリオの期待結果だけを一時的に反対の結果へ変えて `npm run test:acceptance` を実行した。いずれも対象の1シナリオだけが失敗して非0終了し、Feature のシナリオ位置、失敗した Then、TypeScript の assertion 位置、実値と期待値の差が表示された。記録した時間はコマンド全体の実測値である。各確認後に変更を復元した。
+
+| 分類 ID | 一時的に設定した期待結果 | 表示された差 | 失敗位置 | 実行時間 |
+|---|---|---|---|---|
+| T058 | 許可される | 実値 `false`、期待値 `true` | Feature 5行、step 77行 | 0.857秒 |
+| T059 | 許可されない | 実値 `true`、期待値 `false` | Feature 11行、step 73行 | 0.852秒 |
+| T060 | 通常の CI 失敗 | 実値 `ci_infrastructure_failure`、期待値 `ordinary_ci_failure` | Feature 17行、step 85行 | 0.697秒 |
+| T061 | 許可される | 実値 `false`、期待値 `true` | Feature 23行、step 77行 | 0.863秒 |
+| T062 | CI 障害 | 実値 `ordinary_ci_failure`、期待値 `ci_infrastructure_failure` | Feature 29行、step 81行 | 0.865秒 |
+| T063 | 許可されない | 実値 `true`、期待値 `false` | Feature 35行、step 73行 | 0.833秒 |
+| T064 | 許可される | 実値 `false`、期待値 `true` | Feature 41行、step 77行 | 0.747秒 |
+| T065 | 許可される | 実値 `false`、期待値 `true` | Feature 47行、step 77行 | 0.750秒 |
