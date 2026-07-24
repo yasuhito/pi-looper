@@ -6,7 +6,7 @@ import path from "node:path";
 import { Given, Then, When } from "@cucumber/cucumber";
 
 import { EXTENSION_CODE_CHANGED_WARNING, normalizeProject } from "../../src/core";
-import { buildStatusSnapshot, formatStatusReport } from "../../src/status";
+import { buildStatusSnapshot, formatStatusReport, type StatusReportInput } from "../../src/status";
 
 const fixture = JSON.parse(readFileSync("test/fixtures/status/report-case.json", "utf8"));
 const projects = fixture.projects.map(normalizeProject);
@@ -15,14 +15,22 @@ type StoppedTarget = "issue" | "pull-request";
 
 type OperatorStatusWorld = {
   report?: string;
-  warnings?: string[];
+  statusInput?: StatusReportInput;
   stoppedTarget?: StoppedTarget;
   blockedComment?: string;
   commands?: string[];
 };
 
-function statusReport(warnings: string[] = []): string {
-  return formatStatusReport(buildStatusSnapshot({ ...fixture, projects, warnings }));
+function baseStatusInput(): StatusReportInput {
+  return {
+    cwd: fixture.cwd,
+    nowMs: fixture.nowMs,
+    projects,
+  };
+}
+
+function statusReport(input: StatusReportInput): string {
+  return formatStatusReport(buildStatusSnapshot(input));
 }
 
 function runDriverFixture(target: StoppedTarget): string {
@@ -41,6 +49,8 @@ function runDriverFixture(target: StoppedTarget): string {
       DEADLOOP_PROJECT_ID: "demo",
       DEADLOOP_REPO_PATH: isIssue ? "/repo path" : "/repo",
       DEADLOOP_GITHUB_REPO: "owner/repo",
+      DEADLOOP_BLOCKED_LABEL: "agent:blocked",
+      DEADLOOP_IMPLEMENT_LABEL: "agent:implement",
       DEADLOOP_CHECK_COMMAND: "npm test",
       DEADLOOP_WORKER_AGENT: "pi",
       DEADLOOP_REVIEWER_AGENT: "pi",
@@ -54,42 +64,49 @@ function runDriverFixture(target: StoppedTarget): string {
 }
 
 Given("実装待ちの Issue がない", function (this: OperatorStatusWorld) {
-  this.warnings = [];
+  this.statusInput = { ...baseStatusInput(), issues: [] };
 });
 
 Given("Issue #13 が実装中である", function (this: OperatorStatusWorld) {
-  this.warnings = [];
+  this.statusInput = { ...baseStatusInput(), issues: fixture.issues };
 });
 
 Given("pull request #21 がレビュー待ちである", function (this: OperatorStatusWorld) {
-  this.warnings = [];
+  this.statusInput = { ...baseStatusInput(), openPrs: fixture.openPrs };
 });
 
 Given("マージ済み pull request #20 の作業場所が残っている", function (this: OperatorStatusWorld) {
-  this.warnings = [];
+  this.statusInput = {
+    ...baseStatusInput(),
+    closedPrs: fixture.closedPrs,
+    worktrees: [fixture.worktrees[0]],
+    gitStatuses: fixture.gitStatuses,
+    gitHeads: fixture.gitHeads,
+  };
 });
 
 Given("実装中の Issue #13 の作業場所が稼働している", function (this: OperatorStatusWorld) {
-  this.warnings = [];
+  this.statusInput = { ...baseStatusInput(), worktrees: [fixture.worktrees[1]] };
 });
 
 Given("deadloop 拡張のコード更新が状態表示に反映されていない", function (this: OperatorStatusWorld) {
-  this.warnings = [EXTENSION_CODE_CHANGED_WARNING];
+  this.statusInput = { ...baseStatusInput(), warnings: [EXTENSION_CODE_CHANGED_WARNING] };
 });
 
 Given("自動化が直近の実行で Issue #12 を選んでいる", function (this: OperatorStatusWorld) {
-  this.warnings = [];
+  this.statusInput = { ...baseStatusInput(), state: fixture.state };
 });
 
 Given(
   "ローカル設定の場所が不明で、リポジトリ設定を origin\\/main の deadloop.json から読む設定である",
   function (this: OperatorStatusWorld) {
-    this.warnings = [];
+    this.statusInput = baseStatusInput();
   },
 );
 
 When("オペレーターが deadloop の状態を表示する", function (this: OperatorStatusWorld) {
-  this.report = statusReport(this.warnings);
+  if (!this.statusInput) throw new Error("status input is required");
+  this.report = statusReport(this.statusInput);
 });
 
 Then("実装待ちの Issue はないと表示される", function (this: OperatorStatusWorld) {
