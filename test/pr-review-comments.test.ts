@@ -93,6 +93,53 @@ describe("PR review public comments", () => {
     ).not.toContain("/workspace");
   });
 
+  it("redacts generated reviewer names from public text", () => {
+    expect(
+      renderApprovedReviewComment({
+        headOid: "a".repeat(40),
+        summary: "demo-pr-24-reviewer found the issue",
+        reviewFingerprint: "1".repeat(20),
+      }),
+    ).not.toContain("demo-pr-24-reviewer");
+  });
+
+  it("redacts runner session terminology from public text", () => {
+    expect(
+      renderApprovedReviewComment({
+        headOid: "a".repeat(40),
+        summary: "Inspect the herdr session",
+        reviewFingerprint: "1".repeat(20),
+      }),
+    ).not.toContain("herdr session");
+  });
+
+  it("rejects absolute finding paths", () => {
+    expect(
+      renderChangesRequestedComment({
+        ...fixture("changes-requested.json"),
+        findings: [{ title: "Private path", body: "Use repository evidence.", path: "/workspace/private/runtime.log", severity: "major" }],
+      }),
+    ).toContain("- File: `Not specified`");
+  });
+
+  it("rejects multiline finding paths instead of rendering injected Markdown", () => {
+    expect(
+      renderChangesRequestedComment({
+        ...fixture("changes-requested.json"),
+        findings: [{ title: "Unsafe path", body: "Use one path.", path: "src/a.ts\n## Injected", severity: "major" }],
+      }),
+    ).not.toContain("## Injected");
+  });
+
+  it("escapes Markdown in public finding text", () => {
+    expect(
+      renderChangesRequestedComment({
+        ...fixture("changes-requested.json"),
+        findings: [{ title: "[Injected](https://example.com)", body: "**unsafe**", path: "src/a.ts", severity: "major" }],
+      }),
+    ).not.toContain("[Injected](https://example.com)");
+  });
+
   it("renders repeated findings without recording a second repair attempt", () => {
     expect(renderChangesRequestedComment({ ...fixture("changes-requested.json"), repairUnavailable: true })).not.toContain(
       "deadloop:review-repair-attempt",

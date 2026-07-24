@@ -5,18 +5,26 @@ type JsonObject = Record<string, any>;
 const REVIEW_RESULT_RE = /<!--\s*deadloop:review-result\s+head=([0-9a-f]+)\s+review=([0-9a-f]+)\s+outcome=(approved|changes_requested|human_required)\s*-->/gi;
 const REPAIR_RESULT_RE = /<!--\s*deadloop:review-repair-result\s+key=([0-9a-f]+)\s+head=([0-9a-f]+)\s*-->/gi;
 
-const INTERNAL_DETAIL_RE = /(?:^|[\s`'"(])(?:\/(?!\/)[^\s`'")]+|[A-Za-z]:\\)|(?:\.pi|\.deadloop)[\\/]|(?:worker|review-repair)-prompt(?:\.md)?|promise\.json|[\\/]prompts?[\\/]|review-repair worker|deterministic dispatcher/i;
+const INTERNAL_DETAIL_RE = /(?:^|[\s`'"(])(?:\/(?!\/)[^\s`'")]+|[A-Za-z]:\\)|(?:\.pi|\.deadloop)[\\/]|(?:worker|review-repair)-prompt(?:\.md)?|promise\.json|[\\/]prompts?[\\/]|review-repair worker|deterministic dispatcher|\bherdr\b|\brunner\b|\bsession\b|\b[a-z0-9]+-pr-\d+-(?:reviewer|review-repair(?:-[a-z0-9-]+)?)\b/i;
+const CONTROL_OR_LINE_BREAK_RE = /[\u0000-\u001f\u007f-\u009f\r\n]/;
+const REPOSITORY_PATH_RE = /^(?!\.git(?:\/|$))(?!.*\/\/)[A-Za-z0-9._@+~/-]+$/;
+
+function escapeMarkdown(text: string): string {
+  return text.replace(/([\\`*_{}\[\]()<>#+!|])/g, "\\$1");
+}
 
 function publicText(value: unknown, fallback: string): string {
-  const text = String(value || "").trim();
-  if (!text || INTERNAL_DETAIL_RE.test(text) || text.includes("<!-- deadloop:")) return fallback;
-  return text;
+  const raw = String(value || "");
+  const text = raw.trim();
+  if (!text || CONTROL_OR_LINE_BREAK_RE.test(raw) || INTERNAL_DETAIL_RE.test(text) || text.includes("<!-- deadloop:")) return fallback;
+  return escapeMarkdown(text);
 }
 
 function publicRepoPath(value: unknown): string {
-  const candidate = String(value || "").trim();
-  if (!candidate || candidate.startsWith("/") || candidate.startsWith("\\") || /^[A-Za-z]:\\/.test(candidate)) return "Not specified";
-  if (candidate.split(/[\\/]/).includes("..") || INTERNAL_DETAIL_RE.test(candidate)) return "Not specified";
+  const raw = String(value || "");
+  const candidate = raw.trim();
+  if (!candidate || CONTROL_OR_LINE_BREAK_RE.test(raw) || !REPOSITORY_PATH_RE.test(candidate)) return "Not specified";
+  if (candidate.startsWith("/") || candidate.split("/").includes("..") || INTERNAL_DETAIL_RE.test(candidate)) return "Not specified";
   return candidate;
 }
 

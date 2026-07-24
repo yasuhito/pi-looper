@@ -71,6 +71,12 @@ function validatePromise(filePath: string): PromiseValidation {
   if (promise.outcome === "changes_requested" && (!Array.isArray(promise.findings) || promise.findings.length === 0)) {
     return invalidPromise(filePath, "changes_requested_requires_findings");
   }
+  if (
+    promise.outcome === "changes_requested" &&
+    promise.findings.some((finding: PromiseValidation) => !VALID_FINDING_SEVERITIES.has(finding.severity))
+  ) {
+    return invalidPromise(filePath, "changes_requested_requires_finding_severity");
+  }
   if (status === "blocked" && promise.outcome !== undefined) return invalidPromise(filePath, "blocked_has_outcome");
   if (
     promise.reason === "repair_pushed" &&

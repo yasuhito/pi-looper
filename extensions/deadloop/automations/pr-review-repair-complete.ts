@@ -74,7 +74,19 @@ function completion(args: JsonObject): DriverResult {
   const needsHumanLabels = labelNames.includes(String(args.reviewingLabel)) || !labelNames.includes(String(args.blockedLabel));
   const stopMarker = `<!-- deadloop:review-repair-stop key=${String(args.attemptKey).toLowerCase()} -->`;
 
-  if (validation.status === "complete" && validation.promise?.reason === "stale_head") {
+  const expectedHead = String(args.expectedHead).toLowerCase();
+  const staleConfirmed =
+    validation.status === "complete" &&
+    validation.promise?.reason === "stale_head" &&
+    receipt?.action === "stale_head" &&
+    contract?.attemptKey === args.attemptKey &&
+    String(contract?.expectedHead || "").toLowerCase() === expectedHead &&
+    String(receipt.originalHeadOid || "").toLowerCase() === expectedHead &&
+    String(pr.state || "").toUpperCase() === "OPEN" &&
+    Boolean(pr.headRefOid) &&
+    String(pr.headRefOid).toLowerCase() !== expectedHead;
+
+  if (staleConfirmed) {
     return driverResult("done", `PR #${args.pr} repair became stale; no public success was posted`, { driverAction: "repair_stale_head" });
   }
 

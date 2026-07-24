@@ -56,6 +56,15 @@ describe("extract worker promise helper", () => {
     );
   });
 
+  it("rejects changes_requested findings without severity", () => {
+    withTempFile(
+      '{"status":"complete","outcome":"changes_requested","reason":"","summary":"missing severity","findings":[{"title":"Unsafe fallback","body":"Remove the fallback"}]}',
+      (filePath) => {
+        expect(runHelper(filePath).status).toBe("invalid");
+      },
+    );
+  });
+
   it("accepts a structured successful repair report", () => {
     withTempFile(
       '{"status":"complete","reason":"repair_pushed","summary":"fixed","repairs":[{"title":"Unsafe fallback","summary":"Removed fallback","paths":["src/review.ts"]}],"checks":[{"command":"npm test","result":"passed"}]}',

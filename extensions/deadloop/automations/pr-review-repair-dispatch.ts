@@ -82,7 +82,7 @@ function readLivePr(repo: string, prNumber: string): JsonObject {
   ]);
 }
 
-function recoveryComment(prNumber: string, env: ReturnType<typeof envConfig>, reason: string, summary: string): string {
+function recoveryComment(prNumber: string, env: ReturnType<typeof envConfig>, reason: string, summary: string, marker = ""): string {
   return `## What happened
 - Automatic review repair for PR #${prNumber} requires human intervention: ${publicText(reason, "the bounded automatic path could not safely continue")}.
 - ${publicText(summary, "The bounded automatic path could not safely continue.")}
@@ -93,11 +93,11 @@ function recoveryComment(prNumber: string, env: ReturnType<typeof envConfig>, re
 gh pr view ${prNumber} -R ${shellQuote(env.githubRepo)} --comments --json number,state,headRefName,headRefOid,labels,statusCheckRollup
    \`\`\`
 2. Correct the branch or resolve the required decision without rewriting history.
-3. Push a new commit, then remove ${env.blockedLabel}; the changed head can start a new review cycle.`;
+3. Push a new commit, then remove ${env.blockedLabel}; the changed head can start a new review cycle.${marker ? `\n\n${marker}` : ""}`;
 }
 
-function applyHumanBlock(prNumber: string, env: ReturnType<typeof envConfig>, reason: string, summary: string): string {
-  const comment = recoveryComment(prNumber, env, reason, summary);
+function applyHumanBlock(prNumber: string, env: ReturnType<typeof envConfig>, reason: string, summary: string, marker = ""): string {
+  const comment = recoveryComment(prNumber, env, reason, summary, marker);
   github.commentPr(env.githubRepo, prNumber, comment);
   github.movePrLabels(env.githubRepo, prNumber, { remove: env.reviewingLabel, add: env.blockedLabel });
   return comment;
@@ -166,6 +166,45 @@ Promise report:
 - After action=stale_head, write {"status":"complete","reason":"stale_head","summary":"PR head changed; stopped without push or labels"}.
 - On technical, validation, invariant, or push failure, write {"status":"blocked","reason":"specific failure","summary":"what failed and why a human is now required"}.
 - Do not claim success unless the finalizer returned pushed or stale_head.`;
+}
+
+function launchEvidenceFile(prNumber: string, key: string, env: ReturnType<typeof envConfig>): string {
+  return path.join(env.stateDir, "review-repair-launches", `${env.projectId}-pr-${prNumber}-${key}.json`);
+}
+
+function hasLaunchEvidence(
+  prNumber: string,
+  branch: string,
+  expectedHead: string,
+  key: string,
+  env: ReturnType<typeof envConfig>,
+): boolean {
+  try {
+    const evidence = JSON.parse(fs.readFileSync(launchEvidenceFile(prNumber, key, env), "utf8"));
+    return (
+      evidence?.key === key &&
+      evidence?.githubRepo === env.githubRepo &&
+      evidence?.branch === branch &&
+      String(evidence?.expectedHead || "").toLowerCase() === expectedHead.toLowerCase()
+    );
+  } catch {
+    return false;
+  }
+}
+
+function recordLaunchEvidence(
+  prNumber: string,
+  branch: string,
+  expectedHead: string,
+  key: string,
+  env: ReturnType<typeof envConfig>,
+): void {
+  const file = launchEvidenceFile(prNumber, key, env);
+  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+  fs.writeFileSync(file, `${JSON.stringify({ key, githubRepo: env.githubRepo, branch, expectedHead })}\n`, {
+    encoding: "utf8",
+    mode: 0o600,
+  });
 }
 
 function launchRepair(
@@ -284,20 +323,45 @@ function dispatch(args: JsonObject): DriverResult {
 
   const selection = selectRepairAttempt(pr.comments || [], expectedHead, findings);
   if (selection.action === "already_attempted") {
-    if (!reviewCommentExists(pr.comments || [], expectedHead, selection.reviewFingerprint, outcome)) {
-      github.commentPr(
-        env.githubRepo,
-        prNumber,
-        renderChangesRequestedComment({
-          ...commentInput,
-          reviewFingerprint: selection.reviewFingerprint,
-          repairAlreadyStarted: true,
-        }),
-      );
+    if (hasLaunchEvidence(prNumber, branch, expectedHead, selection.key, env)) {
+      if (!reviewCommentExists(pr.comments || [], expectedHead, selection.reviewFingerprint, outcome)) {
+        github.commentPr(
+          env.githubRepo,
+          prNumber,
+          renderChangesRequestedComment({
+            ...commentInput,
+            reviewFingerprint: selection.reviewFingerprint,
+            repairAlreadyStarted: true,
+          }),
+        );
+      }
+      return driverResult("done", `PR #${prNumber} review result was already dispatched; repair was not relaunched`, {
+        driverAction: "review_repair_duplicate",
+        selection,
+      });
     }
-    return driverResult("done", `PR #${prNumber} review result was already dispatched; repair was not relaunched`, {
-      driverAction: "review_repair_duplicate",
+
+    const interruptionMarker = `<!-- deadloop:review-repair-dispatch-stop key=${selection.key} -->`;
+    const alreadyRecovered = (pr.comments || []).some((comment: JsonObject) =>
+      String(comment?.body || "").includes(interruptionMarker),
+    );
+    const labelNames = (pr.labels || []).map((label: JsonObject) => String(label.name || label));
+    let comment = "Interrupted repair dispatch recovery already exists.";
+    if (!alreadyRecovered) {
+      comment = applyHumanBlock(
+        prNumber,
+        env,
+        "the repair attempt was recorded but no confirmed worker launch exists",
+        promise.summary,
+        interruptionMarker,
+      );
+    } else if (labelNames.includes(env.reviewingLabel) || !labelNames.includes(env.blockedLabel)) {
+      github.movePrLabels(env.githubRepo, prNumber, { remove: env.reviewingLabel, add: env.blockedLabel });
+    }
+    return driverResult("done", `PR #${prNumber} repair dispatch was interrupted; marked blocked`, {
+      driverAction: "review_repair_dispatch_interrupted",
       selection,
+      comment,
     });
   }
   if (selection.action !== "launch_repair") {
@@ -322,9 +386,10 @@ function dispatch(args: JsonObject): DriverResult {
   }
 
   github.commentPr(env.githubRepo, prNumber, renderChangesRequestedComment({ ...commentInput, reviewFingerprint: selection.reviewFingerprint }));
-  github.movePrLabels(env.githubRepo, prNumber, { add: [env.reviewLabel, env.reviewingLabel] });
   try {
+    github.movePrLabels(env.githubRepo, prNumber, { add: [env.reviewLabel, env.reviewingLabel] });
     const launch = launchRepair(prNumber, branch, expectedHead, findings, selection.key, env);
+    recordLaunchEvidence(prNumber, branch, expectedHead, selection.key, env);
     return driverResult("needs_llm", `Launched review-repair worker for PR #${prNumber}`, {
       driverAction: "review_repair_monitor_request",
       selection,
@@ -350,6 +415,7 @@ function dispatch(args: JsonObject): DriverResult {
       env,
       `the bounded repair launch failed after its attempt marker was recorded: ${error instanceof Error ? error.message : String(error)}`,
       promise.summary,
+      `<!-- deadloop:review-repair-dispatch-stop key=${selection.key} -->`,
     );
     return driverResult("done", `PR #${prNumber} repair launch failed; marked blocked`, {
       driverAction: "review_repair_launch_failed",

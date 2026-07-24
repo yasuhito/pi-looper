@@ -14,6 +14,7 @@ function runCompletion(options: {
   promise: Record<string, unknown>;
   receipt?: Record<string, unknown> | string;
   comments?: { body: string }[];
+  liveHead?: string;
 }) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "deadloop-repair-complete-"));
   roots.push(root);
@@ -37,7 +38,7 @@ function runCompletion(options: {
     `#!/usr/bin/env node
 const fs = require("node:fs");
 const args = process.argv.slice(2);
-if (args[0] === "pr" && args[1] === "view") process.stdout.write(JSON.stringify({state:"OPEN",headRefOid:"${newHead}",labels:[{name:"agent:reviewing"}],comments:${JSON.stringify(options.comments || [])}}));
+if (args[0] === "pr" && args[1] === "view") process.stdout.write(JSON.stringify({state:"OPEN",headRefOid:"${options.liveHead || newHead}",labels:[{name:"agent:reviewing"}],comments:${JSON.stringify(options.comments || [])}}));
 if (args[0] === "pr" && args[1] === "comment") fs.writeFileSync(process.env.POSTED_FILE, args[args.indexOf("--body") + 1]);
 `,
   );
@@ -108,6 +109,33 @@ describe("review repair deterministic completion", () => {
     });
 
     expect(result.posted).toBe("");
+  });
+
+  it("requires recovery when stale_head has no finalizer receipt", () => {
+    const result = runCompletion({
+      promise: { status: "complete", reason: "stale_head", summary: "head changed" },
+    });
+
+    expect(result.output.driverAction).toBe("repair_human_blocked");
+  });
+
+  it("requires recovery when stale_head receipt names a different original head", () => {
+    const result = runCompletion({
+      promise: { status: "complete", reason: "stale_head", summary: "head changed" },
+      receipt: { action: "stale_head", originalHeadOid: "c".repeat(40) },
+    });
+
+    expect(result.output.driverAction).toBe("repair_human_blocked");
+  });
+
+  it("requires recovery when stale_head is reported but the live head did not change", () => {
+    const result = runCompletion({
+      promise: { status: "complete", reason: "stale_head", summary: "head changed" },
+      receipt: { action: "stale_head", originalHeadOid: oldHead },
+      liveHead: oldHead,
+    });
+
+    expect(result.output.driverAction).toBe("repair_human_blocked");
   });
 
   it("does not duplicate an existing repair result comment", () => {
