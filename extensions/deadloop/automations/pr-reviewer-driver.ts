@@ -425,58 +425,55 @@ function launchBranchUpdate(
   return { updaterName, headRefName: branch, retryKey: key, ...launch, ...(fixture ? { simulated: true } : {}) };
 }
 
+function prReviewerLaunchPlan(
+  pr: JsonObject,
+  env: ReturnType<typeof envConfig>,
+  reason: string,
+  uuid: string,
+): { reviewerName: string; headRefName: string; input: DriverLaunchInput } {
+  const number = Number(pr.number || 0);
+  const reviewerName = `${env.projectId}-pr-${number}-reviewer`;
+  const headRefName = String(pr.headRefName || `pr-${number}`);
+  return {
+    reviewerName,
+    headRefName,
+    input: {
+      worktree: { mode: "open", branch: headRefName },
+      repoPath: env.repoPath,
+      automationDir: env.automationDir,
+      stateDir: env.stateDir,
+      name: reviewerName,
+      agent: env.reviewerAgent,
+      model: env.reviewerModel,
+      level: "medium",
+      uuid,
+      promptFilePrefix: "reviewer-prompt",
+      renderPrompt: ({ promiseFile, worktreePath }: { promiseFile: string; worktreePath: string }) =>
+        reviewAgentPrompt(pr, env, promiseFile, reason, worktreePath),
+    },
+  };
+}
+
 function launchPrReviewerFlow(
   pr: JsonObject,
   env: ReturnType<typeof envConfig>,
   reason: string,
   ops: Parameters<typeof launchAgentFlow>[1],
 ): JsonObject {
-  const number = Number(pr.number || 0);
-  const uuid = randomUUID();
-  const reviewerName = `${env.projectId}-pr-${number}-reviewer`;
-  const headRefName = String(pr.headRefName || `pr-${number}`);
-  const launch = launchAgentFlow(
-    {
-      worktree: { mode: "open", branch: headRefName },
-      repoPath: env.repoPath,
-      automationDir: env.automationDir,
-      stateDir: env.stateDir,
-      name: reviewerName,
-      agent: env.reviewerAgent,
-      model: env.reviewerModel,
-      level: "medium",
-      uuid,
-      promptFilePrefix: "reviewer-prompt",
-      renderPrompt: ({ promiseFile, worktreePath }: { promiseFile: string; worktreePath: string }) =>
-        reviewAgentPrompt(pr, env, promiseFile, reason, worktreePath),
-    },
-    ops,
-  );
-  return { reviewerName, headRefName, ...launch };
+  const plan = prReviewerLaunchPlan(pr, env, reason, randomUUID());
+  const launch = launchAgentFlow(plan.input, ops);
+  return { reviewerName: plan.reviewerName, headRefName: plan.headRefName, ...launch };
 }
 
 function launchPrReviewer(pr: JsonObject, env: ReturnType<typeof envConfig>, fixture: JsonObject | null, reason: string): JsonObject {
   const number = Number(pr.number || 0);
   const uuid = fixture ? "fixture-reviewer-uuid" : randomUUID();
-  const reviewerName = `${env.projectId}-pr-${number}-reviewer`;
-  const headRefName = String(pr.headRefName || `pr-${number}`);
+  const plan = prReviewerLaunchPlan(pr, env, reason, uuid);
+  const { reviewerName, headRefName } = plan;
   const launch = launchWithAdapters(
     env,
     fixture,
-    {
-      worktree: { mode: "open", branch: headRefName },
-      repoPath: env.repoPath,
-      automationDir: env.automationDir,
-      stateDir: env.stateDir,
-      name: reviewerName,
-      agent: env.reviewerAgent,
-      model: env.reviewerModel,
-      level: "medium",
-      uuid,
-      promptFilePrefix: "reviewer-prompt",
-      renderPrompt: ({ promiseFile, worktreePath }: { promiseFile: string; worktreePath: string }) =>
-        reviewAgentPrompt(pr, env, promiseFile, reason, worktreePath),
-    },
+    plan.input,
     (github) => github.movePrLabels(env.githubRepo, number, { add: env.reviewingLabel }),
     () => {
       if (fixture) return;

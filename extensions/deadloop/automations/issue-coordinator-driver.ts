@@ -139,18 +139,15 @@ function shouldSimulateLaunch(fixture: JsonObject | null): boolean {
   return Boolean(fixture);
 }
 
-function launchIssueWorkerFlow(
-  issue: JsonObject,
-  env: ReturnType<typeof envConfig>,
-  ops: Parameters<typeof launchAgentFlow>[1],
-): JsonObject {
+function issueWorkerLaunchPlan(issue: JsonObject, env: ReturnType<typeof envConfig>, uuid: string) {
   const number = Number(issue.number || 0);
-  const uuid = randomUUID();
   const workerName = `${env.projectId}-issue-${number}-worker`;
   const branch = `agent/issue-${number}-${slugForBranch(issue.title)}`;
-  const launch = launchAgentFlow(
-    {
-      worktree: { mode: "create", branch, baseBranch: env.baseBranch },
+  return {
+    workerName,
+    branch,
+    input: {
+      worktree: { mode: "create" as const, branch, baseBranch: env.baseBranch },
       repoPath: env.repoPath,
       automationDir: env.automationDir,
       stateDir: env.stateDir,
@@ -178,16 +175,24 @@ function launchIssueWorkerFlow(
           promiseFile,
         }),
     },
-    ops,
-  );
-  return { workerName, branch, ...launch };
+  };
+}
+
+function launchIssueWorkerFlow(
+  issue: JsonObject,
+  env: ReturnType<typeof envConfig>,
+  ops: Parameters<typeof launchAgentFlow>[1],
+): JsonObject {
+  const plan = issueWorkerLaunchPlan(issue, env, randomUUID());
+  const launch = launchAgentFlow(plan.input, ops);
+  return { workerName: plan.workerName, branch: plan.branch, ...launch };
 }
 
 function launchIssueWorker(issue: JsonObject, env: ReturnType<typeof envConfig>, fixture: JsonObject | null): JsonObject {
   const number = Number(issue.number || 0);
   const uuid = shouldSimulateLaunch(fixture) ? "fixture-worker-uuid" : randomUUID();
-  const workerName = `${env.projectId}-issue-${number}-worker`;
-  const branch = `agent/issue-${number}-${slugForBranch(issue.title)}`;
+  const plan = issueWorkerLaunchPlan(issue, env, uuid);
+  const { workerName, branch } = plan;
   const simulatedWorktreePath = `/worktrees/${env.projectId}/${branch.replace(/\//g, "-")}`;
 
   if (shouldSimulateLaunch(fixture)) {
@@ -207,35 +212,7 @@ function launchIssueWorker(issue: JsonObject, env: ReturnType<typeof envConfig>,
     env,
     (recheck: () => void) => githubOperations(recheck).moveIssueLabels(env.githubRepo, number, { remove: env.implementLabel, add: env.inProgressLabel }),
     (recheck: () => void) => launchAgentFlow(
-      {
-        worktree: { mode: "create", branch, baseBranch: env.baseBranch },
-        repoPath: env.repoPath,
-        automationDir: env.automationDir,
-        stateDir: env.stateDir,
-        name: workerName,
-        agent: env.workerAgent,
-        model: env.workerModel,
-        level: "medium",
-        uuid,
-        promptFilePrefix: "worker-prompt",
-        renderPrompt: ({ promiseFile, worktreePath }: { promiseFile: string; worktreePath: string }) =>
-          renderIssueWorkerPrompt({
-            launchReason: "deterministic issue coordinator launch",
-            issueNumber: number,
-            issueTitle: String(issue.title || "task"),
-            issueUrl: String(issue.url || `https://github.com/${env.githubRepo}/issues/${number}`),
-            githubRepo: env.githubRepo,
-            workerInstructions: env.workerInstructions,
-            checkCommand: env.checkCommand,
-            validationCommand: renderProjectCheckCommand({
-              automationDir: env.automationDir,
-              stateDir: env.stateDir,
-              cwd: worktreePath,
-              command: env.checkCommand,
-            }),
-            promiseFile,
-          }),
-      },
+      plan.input,
       { mkdirSync: fs.mkdirSync, runner: herdrRunner(), runText, writeFileSync: fs.writeFileSync, beforeAgentStart: recheck },
     ),
     {
