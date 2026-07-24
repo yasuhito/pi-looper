@@ -7,13 +7,7 @@ import path from "node:path";
 import { Given, Then, When } from "@cucumber/cucumber";
 
 const { finalizeBranchUpdate } = require("../../extensions/deadloop/automations/pr-branch-update-finalize.ts");
-const {
-  decideTechnicalReviewFailure,
-  renderRepairMarker,
-  renderTechnicalFailureMarker,
-  reviewResultFingerprint,
-  selectRepairAttempt,
-} = require("../../extensions/deadloop/automations/pr-review-repair-state.ts");
+const { renderRepairMarker, renderTechnicalFailureMarker, reviewResultFingerprint } = require("../../extensions/deadloop/automations/pr-review-repair-state.ts");
 const { finalizeReviewRepair } = require("../../extensions/deadloop/automations/pr-review-repair-finalize.ts");
 const { repairWorkerPrompt } = require("../../extensions/deadloop/automations/pr-review-repair-dispatch.ts");
 
@@ -52,18 +46,45 @@ function reviewerDriver(fixture: string): Record<string, unknown> {
   return JSON.parse(result.stdout);
 }
 
-function repairDispatch(): Record<string, unknown> {
+function repairDispatch(testCase: string): Record<string, unknown> {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "deadloop-acceptance-review-repair-"));
   try {
     const bin = path.join(root, "bin");
     const worktree = path.join(root, "worktree");
+    const configDir = path.join(root, "config");
+    const state = path.join(configDir, "deadloop");
     const promise = path.join(root, "review-promise.json");
+    const githubLog = path.join(root, "github.log");
+    const herdrLog = path.join(root, "herdr.log");
     fs.mkdirSync(bin);
     fs.mkdirSync(worktree);
+    fs.mkdirSync(state, { recursive: true });
+    fs.writeFileSync(
+      path.join(state, "enabled-projects.json"),
+      JSON.stringify({ projects: [{
+        repoPath: root,
+        githubRepo: "owner/repo",
+        githubRepositoryId: "R_repo",
+        enabledAt: 1,
+        firstEnableAutoMerge: false,
+        firstStartPending: false,
+        lastObservedAutoMerge: false,
+        autoMergeAcknowledged: false,
+        enabled: true,
+      }] }),
+    );
+    const blocked = testCase === "first-technical-failure" || testCase === "repeated-technical-failure";
     fs.writeFileSync(
       promise,
-      JSON.stringify({ status: "complete", outcome: "changes_requested", reason: "", summary: "Repair required.", findings }),
+      JSON.stringify(blocked
+        ? { status: "blocked", reason: "reviewer failed", summary: "Technical review failure." }
+        : { status: "complete", outcome: "changes_requested", reason: "", summary: "Repair required.", findings }),
     );
+    const comments = testCase === "repeated-repair"
+      ? [{ body: renderRepairMarker(head, reviewResultFingerprint(findings)) }]
+      : testCase === "repeated-technical-failure"
+        ? [{ body: renderTechnicalFailureMarker(head) }]
+        : [];
     const executable = (file: string, content: string) => {
       fs.writeFileSync(file, content);
       fs.chmodSync(file, 0o755);
@@ -71,17 +92,29 @@ function repairDispatch(): Record<string, unknown> {
     executable(
       path.join(bin, "gh"),
       `#!/usr/bin/env node
-if (process.argv[2] === "pr" && process.argv[3] === "view") process.stdout.write(JSON.stringify({
+const fs = require("node:fs");
+const args = process.argv.slice(2);
+if (args[0] === "pr" && args[1] === "view") process.stdout.write(JSON.stringify({
   number: 31, state: "OPEN", headRefName: "${branch}", headRefOid: "${head}", isCrossRepository: false,
-  labels: [{name: "agent:review"}, {name: "agent:reviewing"}], comments: []
+  labels: [{name: "agent:review"}, {name: "agent:reviewing"}], comments: JSON.parse(process.env.TEST_COMMENTS)
 }));
+else if (args[0] === "repo" && args[1] === "view") process.stdout.write(JSON.stringify({id: "R_repo"}));
+else fs.appendFileSync(process.env.TEST_GITHUB_LOG, args.join(" ") + "\\n");
 `,
     );
-    executable(path.join(bin, "git"), "#!/usr/bin/env node\nprocess.exit(0);\n");
+    executable(
+      path.join(bin, "git"),
+      `#!/usr/bin/env node
+const args = process.argv.slice(2);
+if (args.includes("get-url")) process.stdout.write("https://github.com/owner/repo.git\\n");
+`,
+    );
     executable(
       path.join(bin, "herdr"),
       `#!/usr/bin/env node
+const fs = require("node:fs");
 const args = process.argv.slice(2);
+fs.appendFileSync(process.env.TEST_HERDR_LOG, args.join(" ") + "\\n");
 if (args[0] === "worktree" && args[1] === "open") process.stdout.write(JSON.stringify({workspace_id: "workspace-1", path: process.env.TEST_WORKTREE}));
 else if (args[0] === "agent" && args[1] === "list") process.stdout.write(JSON.stringify({result: {agents: []}}));
 else if (args[0] === "tab" && args[1] === "create") process.stdout.write(JSON.stringify({tab_id: "tab-1"}));
@@ -90,33 +123,32 @@ else if (args[0] === "agent" && args[1] === "start") process.stdout.write(JSON.s
     );
     const result = spawnSync(
       "node",
-      [
-        "extensions/deadloop/automations/pr-review-repair-dispatch.ts",
-        "--promise",
-        promise,
-        "--pr",
-        "31",
-        "--expected-head",
-        head,
-        "--branch",
-        branch,
-      ],
+      ["extensions/deadloop/automations/pr-review-repair-dispatch.ts", "--promise", promise, "--pr", "31", "--expected-head", head, "--branch", branch],
       {
         cwd: process.cwd(),
         encoding: "utf8",
         env: {
           ...process.env,
           PATH: `${bin}:${process.env.PATH}`,
+          PI_CODING_AGENT_DIR: configDir,
           DEADLOOP_PROJECT_ID: "demo",
           DEADLOOP_REPO_PATH: root,
           DEADLOOP_GITHUB_REPO: "owner/repo",
-          DEADLOOP_STATE_DIR: path.join(root, "state"),
+          DEADLOOP_ENABLED_AT: "1",
+          DEADLOOP_STATE_DIR: state,
+          TEST_COMMENTS: JSON.stringify(comments),
+          TEST_GITHUB_LOG: githubLog,
+          TEST_HERDR_LOG: herdrLog,
           TEST_WORKTREE: worktree,
         },
       },
     );
     if (result.status !== 0) throw new Error(result.stderr || result.stdout);
-    return JSON.parse(result.stdout);
+    return {
+      ...JSON.parse(result.stdout),
+      githubLog: fs.existsSync(githubLog) ? fs.readFileSync(githubLog, "utf8") : "",
+      herdrLog: fs.existsSync(herdrLog) ? fs.readFileSync(herdrLog, "utf8") : "",
+    };
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -124,8 +156,14 @@ else if (args[0] === "agent" && args[1] === "start") process.stdout.write(JSON.s
 
 function finalizerOps(commands: string[][], actualHead = head) {
   return {
+    assertEnabled: () => ({ githubRepo: "owner/repo", githubRepositoryId: "R_repo" }),
     run: (args: string[]) => {
       commands.push(args);
+      if (args.includes("get-url")) return { status: 0, stdout: "https://github.com/owner/repo.git\n", stderr: "" };
+      if (args.includes("ls-remote")) return { status: 0, stdout: `${head}\trefs/heads/${branch}\n`, stderr: "" };
+      if (args.includes("--git-common-dir")) return { status: 0, stdout: "/common\n", stderr: "" };
+      if (args.includes("symbolic-ref")) return { status: 0, stdout: `${branch}\n`, stderr: "" };
+      if (args[0] === "gh" && args[1] === "repo") return { status: 0, stdout: JSON.stringify({ id: "R_repo" }), stderr: "" };
       if (args[0] === "gh") {
         return {
           status: 0,
@@ -133,7 +171,7 @@ function finalizerOps(commands: string[][], actualHead = head) {
           stderr: "",
         };
       }
-      if (args.includes("rev-parse")) return { status: 0, stdout: `${"c".repeat(40)}\n`, stderr: "" };
+      if (args.includes("rev-parse")) return { status: 0, stdout: `${repairedHead}\n`, stderr: "" };
       return { status: 0, stdout: "", stderr: "" };
     },
   };
@@ -143,6 +181,7 @@ function repairFinalizer(commands: string[][], actualHead = head) {
   return finalizeReviewRepair(
     {
       repo: "/worktree",
+      projectRepo: "/repo",
       githubRepo: "owner/repo",
       pr: "31",
       branch,
@@ -150,6 +189,7 @@ function repairFinalizer(commands: string[][], actualHead = head) {
       remote: "origin",
       automationDir: "/automation",
       stateDir: "/state",
+      enabledAt: 1,
       checkCommand: "npm test",
     },
     finalizerOps(commands, actualHead),
@@ -160,6 +200,7 @@ function branchUpdateFinalizer(commands: string[][], actualHead = head) {
   return finalizeBranchUpdate(
     {
       repo: "/worktree",
+      projectRepo: "/repo",
       githubRepo: "owner/repo",
       pr: "31",
       branch,
@@ -168,6 +209,7 @@ function branchUpdateFinalizer(commands: string[][], actualHead = head) {
       remote: "origin",
       automationDir: "/automation",
       stateDir: "/state",
+      enabledAt: 1,
       checkCommand: "npm test",
     },
     finalizerOps(commands, actualHead),
@@ -226,16 +268,12 @@ When("deadloop が pull request を確認する", function (this: RecoveryWorld)
 });
 
 When("deadloop がレビュー結果を処理する", function (this: RecoveryWorld) {
-  if (this.case === "first-repair") this.result = selectRepairAttempt([], head, findings);
-  if (this.case === "repeated-repair") {
-    this.result = selectRepairAttempt([{ body: renderRepairMarker(head, reviewResultFingerprint(findings)) }], repairedHead, findings);
-  }
-  if (this.case === "first-technical-failure") this.result = decideTechnicalReviewFailure([], head);
-  if (this.case === "repeated-technical-failure") this.result = decideTechnicalReviewFailure([{ body: renderTechnicalFailureMarker(head) }], head);
+  if (!this.case) throw new Error("review recovery case is missing");
+  this.result = repairDispatch(this.case);
 });
 
 When("deadloop がレビュー指摘の修正を開始する", function (this: RecoveryWorld) {
-  this.result = repairDispatch();
+  this.result = repairDispatch("first-repair");
 });
 
 When("deadloop が修正作業者へ指示する", function (this: RecoveryWorld) {
@@ -292,19 +330,19 @@ Then("deadloop はレビュー状態を維持する", function (this: RecoveryWo
 });
 
 Then("deadloop は専用の修正作業を開始する", function (this: RecoveryWorld) {
-  assert.equal(this.result?.action, "launch_repair");
+  assert.ok(String(this.result?.herdrLog).includes("agent start"), JSON.stringify(this.result));
 });
 
 Then("deadloop は修正を停止して人間対応にする", function (this: RecoveryWorld) {
-  assert.equal(this.result?.action, "human_required");
+  assert.ok(String(this.result?.githubLog).includes("agent:blocked"));
 });
 
 Then("deadloop はレビューを一度だけ再試行する", function (this: RecoveryWorld) {
-  assert.equal(this.result?.action, "retry");
+  assert.ok(String(this.result?.githubLog).includes("Reviewer technical failure will be retried once"));
 });
 
 Then("deadloop はレビューを停止して人間対応にする", function (this: RecoveryWorld) {
-  assert.equal(this.result?.action, "human_required");
+  assert.ok(String(this.result?.githubLog).includes("agent:blocked"));
 });
 
 Then("deadloop は修正作業者に作業範囲を広げないよう指示する", function (this: RecoveryWorld) {
@@ -320,7 +358,7 @@ Then("deadloop は branch へ push しない", function (this: RecoveryWorld) {
 });
 
 Then("deadloop は確認した branch へ非強制で push する", function (this: RecoveryWorld) {
-  assert.deepEqual(this.commands?.find((command) => command.includes("push")), ["git", "-C", "/worktree", "push", "--porcelain", "origin", `HEAD:refs/heads/${branch}`]);
+  assert.deepEqual(this.commands?.find((command) => command.includes("push")), ["git", "-C", "/worktree", "push", "--porcelain", "https://github.com/owner/repo.git", `${repairedHead}:refs/heads/${branch}`]);
 });
 
 Then("deadloop は push 前に設定済みチェックを実行する", function (this: RecoveryWorld) {
@@ -330,7 +368,7 @@ Then("deadloop は push 前に設定済みチェックを実行する", function
 });
 
 Then("deadloop は競合回復 branch へ非強制で push する", function (this: RecoveryWorld) {
-  assert.deepEqual(this.commands?.find((command) => command.includes("push")), ["git", "-C", "/worktree", "push", "--porcelain", "origin", `HEAD:refs/heads/${branch}`]);
+  assert.deepEqual(this.commands?.find((command) => command.includes("push")), ["git", "-C", "/worktree", "push", "--porcelain", "https://github.com/owner/repo.git", `${repairedHead}:refs/heads/${branch}`]);
 });
 
 Then("deadloop は競合回復の push 前に設定済みチェックを実行する", function (this: RecoveryWorld) {
