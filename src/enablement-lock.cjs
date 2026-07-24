@@ -87,16 +87,26 @@ function reclaimStale(lockPath, hooks = {}) {
     if (error.code === "EEXIST" || error.code === "ENOENT") return false;
     throw error;
   }
+  const capturedPath = `${claimPath}.${process.pid}.${crypto.randomUUID()}.captured`;
   try {
     const owner = readMetadata(claimPath);
     if ((!owner && !isOldMalformedLock(claimPath)) || (owner && isLockOwnerAlive(owner)) || !sameFile(lockPath, claimPath)) return false;
     hooks.beforeStaleUnlink?.();
-    if (!sameFile(lockPath, claimPath)) return false;
-    if (owner ? readMetadata(lockPath)?.token !== owner.token : !isOldMalformedLock(lockPath)) return false;
-    fs.unlinkSync(lockPath);
+    try {
+      fs.renameSync(lockPath, capturedPath);
+    } catch (error) {
+      if (error.code === "ENOENT") return false;
+      throw error;
+    }
+    if (!sameFile(capturedPath, claimPath)) {
+      try { fs.renameSync(capturedPath, lockPath); } catch (error) { if (error.code !== "EEXIST") throw error; }
+      return false;
+    }
+    fs.unlinkSync(capturedPath);
     return true;
   } finally {
     try { fs.unlinkSync(claimPath); } catch {}
+    try { fs.unlinkSync(capturedPath); } catch {}
   }
 }
 

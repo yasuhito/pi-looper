@@ -415,4 +415,22 @@ describe("enablement mutation guards", () => {
     } });
     expect(JSON.parse(readFileSync(lockPath, "utf8")).token).toBe("replacement");
   });
+
+  it("does not unlink a replacement published after a competing reclaimer removes the stale inode", () => {
+    const project = fixture();
+    const lockPath = path.join(project.stateDir, "enabled-projects.json.lock");
+    writeFileSync(lockPath, JSON.stringify({ pid: 999_999_999, token: "stale" }));
+    let competingResult = false;
+
+    const result = reclaimStale(lockPath, { beforeStaleUnlink: () => {
+      competingResult = reclaimStale(lockPath);
+      writeFileSync(lockPath, JSON.stringify({ pid: process.pid, token: "replacement" }));
+    } });
+
+    expect({ result, competingResult, token: JSON.parse(readFileSync(lockPath, "utf8")).token }).toEqual({
+      result: false,
+      competingResult: true,
+      token: "replacement",
+    });
+  });
 });

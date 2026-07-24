@@ -19,7 +19,7 @@ const approvedReview = {
 
 function runMerge(options: {
   mergeStatus?: number;
-  autoMergeEnabled?: boolean;
+  autoMergeEnabled?: boolean | boolean[];
   enabled?: { firstEnableAutoMerge: boolean; firstStartPending: boolean; autoMergeAcknowledged: boolean };
   pr?: Record<string, unknown>;
   review?: typeof approvedReview;
@@ -28,6 +28,7 @@ function runMerge(options: {
   let lockHeld = false;
   let configObservedInsideLock = false;
   let mutationObservedInsideLock = false;
+  let autoMergeChecks = 0;
   const action = mergeReviewedPr(
     {
       projectRepo: "/repo",
@@ -56,7 +57,10 @@ function runMerge(options: {
       },
       isAutoMergeEnabled: () => {
         configObservedInsideLock = lockHeld;
-        return options.autoMergeEnabled ?? true;
+        const configured = options.autoMergeEnabled ?? true;
+        return Array.isArray(configured)
+          ? (configured[autoMergeChecks++] ?? configured.at(-1) ?? false)
+          : configured;
       },
       validateReviewPromise: () => options.review || approvedReview,
       run: (args: string[]) => {
@@ -91,6 +95,10 @@ describe("reviewed PR merge", () => {
 
   it("fails closed when auto-merge was disabled after launch", () => {
     expect(() => runMerge({ autoMergeEnabled: false })).toThrow("autoMerge is not currently enabled");
+  });
+
+  it("rechecks auto-merge intent immediately before the merge mutation", () => {
+    expect(() => runMerge({ autoMergeEnabled: [true, false] })).toThrow("autoMerge is not currently enabled");
   });
 
   it("rejects auto-merge during the first safe start", () => {

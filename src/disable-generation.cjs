@@ -1,5 +1,6 @@
 const fs = require("node:fs");
 const path = require("node:path");
+const { acquireLockSync, releaseOwned } = require("./enablement-lock.cjs");
 
 function generationPath(stateDir) {
   return path.join(stateDir, "disable-generation.json");
@@ -38,14 +39,23 @@ function currentDisableGeneration(stateDir, repoPath) {
 }
 
 function advanceDisableGeneration(stateDir, repoPath, writeJsonFile) {
-  const state = loadDisableGenerations(stateDir);
-  const resolvedRepoPath = path.resolve(repoPath);
-  const generation = disableGenerationForRepo(state, resolvedRepoPath) + 1;
-  writeJsonFile(generationPath(stateDir), {
-    generation: state.generation,
-    generations: { ...state.generations, [resolvedRepoPath]: generation },
+  const file = generationPath(stateDir);
+  fs.mkdirSync(stateDir, { recursive: true });
+  const lock = acquireLockSync(`${file}.lock`, {
+    busyMessage: "disable generation state is busy",
   });
-  return generation;
+  try {
+    const state = loadDisableGenerations(stateDir);
+    const resolvedRepoPath = path.resolve(repoPath);
+    const generation = disableGenerationForRepo(state, resolvedRepoPath) + 1;
+    writeJsonFile(file, {
+      generation: state.generation,
+      generations: { ...state.generations, [resolvedRepoPath]: generation },
+    });
+    return generation;
+  } finally {
+    releaseOwned(lock.lockPath, lock.token);
+  }
 }
 
 module.exports = {
